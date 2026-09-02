@@ -28,43 +28,120 @@ export async function importStudentsAction(
 
   let successCount = 0;
 
-  for (const item of studentsData) {
-    const parsed = bulkStudentItemSchema.safeParse(item);
-    if (!parsed.success) continue;
+  try {
+    // 1. Sanitasi dan deduplikasi data di memory berdasarkan NIM
+    const validItems = new Map<string, { nim: string; name: string; classGroup: string | null }>();
+    let invalidOrSkippedCount = 0;
 
-    const { nim, name, classGroup } = parsed.data;
-    const cleanNim = nim.trim();
-    const cleanName = name.trim();
-    const cleanClass = classGroup ? classGroup.trim() : null;
+    for (const item of studentsData) {
+      const parsed = bulkStudentItemSchema.safeParse(item);
+      if (!parsed.success) {
+        invalidOrSkippedCount++;
+        continue;
+      }
 
-    await prisma.student.upsert({
-      where: { nim: cleanNim },
-      update: {
-        name: cleanName,
-        classGroup: cleanClass,
-        // Jika belum ada asisten, kaitkan ke asisten yang mengimpor
-        assistantId: session.userId,
-      },
-      create: {
-        nim: cleanNim,
-        name: cleanName,
-        classGroup: cleanClass,
-        assistantId: session.userId,
-      },
+      const cleanNim = parsed.data.nim.trim();
+      const cleanName = parsed.data.name.trim();
+      const cleanClass = parsed.data.classGroup ? parsed.data.classGroup.trim() : null;
+
+      if (cleanNim && cleanName) {
+        validItems.set(cleanNim, { nim: cleanNim, name: cleanName, classGroup: cleanClass });
+      } else {
+        invalidOrSkippedCount++;
+      }
+    }
+
+    if (validItems.size === 0) {
+      return {
+        success: false,
+        message: "Tidak ada baris data valid yang dapat diimpor (seluruh baris dilewati/invalid).",
+      };
+    }
+
+    const nims = Array.from(validItems.keys());
+
+    // 2. Ambil seluruh data yang sudah ada di database dalam 1 query tunggal
+    const existingStudents = await prisma.student.findMany({
+      where: { nim: { in: nims } },
+      select: { nim: true, assistantId: true },
     });
+    const existingMap = new Map(existingStudents.map((s) => [s.nim, s]));
 
-    successCount++;
+    const toCreate: Array<{ nim: string; name: string; classGroup: string | null; assistantId: string }> = [];
+    const updateOperations = [];
+    let foreignOwnerSkipped = 0;
+
+    for (const [nim, item] of validItems) {
+      const existing = existingMap.get(nim);
+      if (!existing) {
+        toCreate.push({
+          nim: item.nim,
+          name: item.name,
+          classGroup: item.classGroup,
+          assistantId: session.userId,
+        });
+      } else {
+        // Jangan timpa mahasiswa binaan asisten lain jika bukan ADMIN
+        if (session.role !== "ADMIN" && existing.assistantId && existing.assistantId !== session.userId) {
+          foreignOwnerSkipped++;
+          continue;
+        }
+
+        updateOperations.push(
+          prisma.student.update({
+            where: { nim },
+            data: {
+              name: item.name,
+              classGroup: item.classGroup,
+              assistantId: existing.assistantId ?? session.userId,
+            },
+          })
+        );
+      }
+    }
+
+    // 3. Eksekusi batch: createMany dalam 1 query
+    let createdCount = 0;
+    if (toCreate.length > 0) {
+      const createRes = await prisma.student.createMany({
+        data: toCreate,
+        skipDuplicates: true,
+      });
+      createdCount = createRes.count;
+    }
+
+    // 4. Eksekusi update dalam chunked transaction untuk efisiensi maksimal
+    if (updateOperations.length > 0) {
+      const CHUNK_SIZE = 50;
+      for (let i = 0; i < updateOperations.length; i += CHUNK_SIZE) {
+        const chunk = updateOperations.slice(i, i + CHUNK_SIZE);
+        await prisma.$transaction(chunk);
+      }
+    }
+
+    const totalProcessed = createdCount + updateOperations.length;
+    const totalSkipped = invalidOrSkippedCount + foreignOwnerSkipped;
+
+    revalidatePath("/praktikan");
+    revalidatePath("/modul");
+    revalidatePath("/rekap-nilai");
+
+    const message =
+      totalSkipped > 0
+        ? `Berhasil mengimpor/memperbarui ${totalProcessed} data praktikan (${totalSkipped} data dilewati: ${
+            foreignOwnerSkipped > 0 ? `${foreignOwnerSkipped} milik asisten lain, ` : ""
+          }${invalidOrSkippedCount} invalid/kosong).`
+        : `Berhasil mengimpor/memperbarui ${totalProcessed} data praktikan.`;
+
+    return {
+      success: true,
+      message,
+      count: totalProcessed,
+    };
+  } catch (error) {
+    console.error("importStudentsAction failed", error);
+    return { success: false, message: "Gagal mengimpor data praktikan." };
   }
-
-  revalidatePath("/praktikan");
-  revalidatePath("/modul");
-  revalidatePath("/rekap-nilai");
-
-  return {
-    success: true,
-    message: `Berhasil mengimpor/memperbarui ${successCount} data praktikan.`,
-    count: successCount,
-  };
 }
 
 /**
@@ -82,26 +159,48 @@ export async function createStudentAction(input: StudentInput): Promise<StudentA
   }
 
   const { nim, name, classGroup } = parsed.data;
+  const cleanNim = nim.trim();
+  const cleanName = name.trim();
+  const cleanClass = classGroup?.trim() || null;
 
   try {
-    await prisma.student.upsert({
-      where: { nim: nim.trim() },
-      update: {
-        name: name.trim(),
-        classGroup: classGroup?.trim() || null,
-      },
-      create: {
-        nim: nim.trim(),
-        name: name.trim(),
-        classGroup: classGroup?.trim() || null,
-        assistantId: session.userId,
-      },
+    const existing = await prisma.student.findUnique({
+      where: { nim: cleanNim },
+      select: { assistantId: true },
     });
+
+    if (existing) {
+      if (session.role !== "ADMIN" && existing.assistantId && existing.assistantId !== session.userId) {
+        return {
+          success: false,
+          message: "Praktikan dengan NIM ini sudah terdaftar di bawah binaan asisten lain.",
+        };
+      }
+
+      await prisma.student.update({
+        where: { nim: cleanNim },
+        data: {
+          name: cleanName,
+          classGroup: cleanClass,
+          assistantId: existing.assistantId ?? session.userId,
+        },
+      });
+    } else {
+      await prisma.student.create({
+        data: {
+          nim: cleanNim,
+          name: cleanName,
+          classGroup: cleanClass,
+          assistantId: session.userId,
+        },
+      });
+    }
 
     revalidatePath("/praktikan");
     return { success: true, message: "Data praktikan berhasil disimpan." };
   } catch (error) {
-    return { success: false, message: "Gagal menyimpan data: " + String(error) };
+    console.error("createStudentAction failed", error);
+    return { success: false, message: "Gagal menyimpan data praktikan." };
   }
 }
 
@@ -144,12 +243,29 @@ export async function deleteStudentAction(nim: string): Promise<StudentActionRes
   if (!session) return { success: false, message: "Akses ditolak" };
 
   try {
+    const student = await prisma.student.findUnique({
+      where: { nim },
+      select: { assistantId: true },
+    });
+
+    if (!student) {
+      return { success: false, message: "Data praktikan tidak ditemukan." };
+    }
+
+    if (session.role !== "ADMIN" && student.assistantId !== session.userId) {
+      return {
+        success: false,
+        message: "Akses ditolak. Anda tidak memiliki izin untuk menghapus praktikan ini.",
+      };
+    }
+
     await prisma.student.delete({
       where: { nim },
     });
     revalidatePath("/praktikan");
     return { success: true, message: "Praktikan berhasil dihapus" };
   } catch (error) {
-    return { success: false, message: "Gagal menghapus praktikan: " + String(error) };
+    console.error("deleteStudentAction failed", error);
+    return { success: false, message: "Gagal menghapus praktikan." };
   }
 }

@@ -31,6 +31,23 @@ export async function saveGradeAction(input: GradeInput): Promise<GradeActionRes
 
   const data = parsed.data;
 
+  // Verifikasi hak akses: asisten hanya boleh menilai praktikan binaannya (ADMIN memiliki akses penuh)
+  const student = await prisma.student.findUnique({
+    where: { nim: data.studentNim },
+    select: { assistantId: true },
+  });
+
+  if (!student) {
+    return { success: false, message: "Data praktikan tidak ditemukan." };
+  }
+
+  if (session.role !== "ADMIN" && student.assistantId !== session.userId) {
+    return {
+      success: false,
+      message: "Akses ditolak. Anda tidak berwenang untuk menilai praktikan ini.",
+    };
+  }
+
   // Hitung subtotal dan total menggunakan pure function
   const calc = calculateModuleScore({
     taskConformity: data.taskConformity,
@@ -44,74 +61,84 @@ export async function saveGradeAction(input: GradeInput): Promise<GradeActionRes
     submissionPunctuality: data.submissionPunctuality,
   });
 
-  // 1. Pastikan record Submission ada
-  const submission = await prisma.submission.upsert({
-    where: {
-      studentNim_moduleId: {
-        studentNim: data.studentNim,
-        moduleId: data.moduleId,
-      },
-    },
-    update: {
-      githubUrl: data.githubUrl || null,
-      demoUrl: data.demoUrl || null,
-      status: "GRADED",
-    },
-    create: {
-      studentNim: data.studentNim,
-      moduleId: data.moduleId,
-      githubUrl: data.githubUrl || null,
-      demoUrl: data.demoUrl || null,
-      status: "GRADED",
-    },
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 1. Pastikan record Submission ada
+      const submission = await tx.submission.upsert({
+        where: {
+          studentNim_moduleId: {
+            studentNim: data.studentNim,
+            moduleId: data.moduleId,
+          },
+        },
+        update: {
+          githubUrl: data.githubUrl || null,
+          demoUrl: data.demoUrl || null,
+          status: "GRADED",
+        },
+        create: {
+          studentNim: data.studentNim,
+          moduleId: data.moduleId,
+          githubUrl: data.githubUrl || null,
+          demoUrl: data.demoUrl || null,
+          status: "GRADED",
+        },
+      });
 
-  // 2. Simpan / perbarui Grade
-  await prisma.grade.upsert({
-    where: {
-      submissionId: submission.id,
-    },
-    update: {
-      assistantId: session.userId,
-      asistensiDate: data.asistensiDate ? new Date(data.asistensiDate) : new Date(),
-      taskConformity: data.taskConformity,
-      programExplanation: data.programExplanation,
-      attendance: data.attendance,
-      attitude: data.attitude,
-      reportDiscussion: data.reportDiscussion,
-      reportFormat: data.reportFormat,
-      plagiarism: data.plagiarism,
-      neatness: data.neatness,
-      submissionPunctuality: data.submissionPunctuality,
+      // 2. Simpan / perbarui Grade
+      await tx.grade.upsert({
+        where: {
+          submissionId: submission.id,
+        },
+        update: {
+          assistantId: session.userId,
+          asistensiDate: data.asistensiDate ? new Date(data.asistensiDate) : new Date(),
+          taskConformity: data.taskConformity,
+          programExplanation: data.programExplanation,
+          attendance: data.attendance,
+          attitude: data.attitude,
+          reportDiscussion: data.reportDiscussion,
+          reportFormat: data.reportFormat,
+          plagiarism: data.plagiarism,
+          neatness: data.neatness,
+          submissionPunctuality: data.submissionPunctuality,
+          totalScore: calc.totalScore,
+          notes: data.notes || null,
+        },
+        create: {
+          submissionId: submission.id,
+          assistantId: session.userId,
+          asistensiDate: data.asistensiDate ? new Date(data.asistensiDate) : new Date(),
+          taskConformity: data.taskConformity,
+          programExplanation: data.programExplanation,
+          attendance: data.attendance,
+          attitude: data.attitude,
+          reportDiscussion: data.reportDiscussion,
+          reportFormat: data.reportFormat,
+          plagiarism: data.plagiarism,
+          neatness: data.neatness,
+          submissionPunctuality: data.submissionPunctuality,
+          totalScore: calc.totalScore,
+          notes: data.notes || null,
+        },
+      });
+    });
+
+    revalidatePath(`/penilaian/${data.moduleId}`);
+    revalidatePath("/rekap-nilai");
+
+    return {
+      success: true,
+      message: `Nilai berhasil disimpan. Total Skor: ${calc.totalScore}`,
       totalScore: calc.totalScore,
-      notes: data.notes || null,
-    },
-    create: {
-      submissionId: submission.id,
-      assistantId: session.userId,
-      asistensiDate: data.asistensiDate ? new Date(data.asistensiDate) : new Date(),
-      taskConformity: data.taskConformity,
-      programExplanation: data.programExplanation,
-      attendance: data.attendance,
-      attitude: data.attitude,
-      reportDiscussion: data.reportDiscussion,
-      reportFormat: data.reportFormat,
-      plagiarism: data.plagiarism,
-      neatness: data.neatness,
-      submissionPunctuality: data.submissionPunctuality,
-      totalScore: calc.totalScore,
-      notes: data.notes || null,
-    },
-  });
-
-  revalidatePath(`/penilaian/${data.moduleId}`);
-  revalidatePath("/rekap-nilai");
-
-  return {
-    success: true,
-    message: `Nilai berhasil disimpan. Total Skor: ${calc.totalScore}`,
-    totalScore: calc.totalScore,
-  };
+    };
+  } catch (error) {
+    console.error("saveGradeAction failed", error);
+    return {
+      success: false,
+      message: "Gagal menyimpan nilai asistensi.",
+    };
+  }
 }
 
 /**

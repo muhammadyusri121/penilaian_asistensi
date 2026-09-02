@@ -83,6 +83,8 @@ export async function getSemesterSummaryAction() {
       attendanceScores,
       moduleScores,
       pretestScoresArray,
+      rawUtsScore: uts,
+      rawUasScore: uas,
       summary,
     };
   });
@@ -94,6 +96,20 @@ export async function getSemesterSummaryAction() {
   };
 }
 
+import { z } from "zod";
+
+const examScoreSchema = z.object({
+  studentNim: z.string().min(1, "NIM tidak boleh kosong"),
+  utsScore: z.number().min(0, "Nilai UTS minimal 0").max(100, "Nilai UTS maksimal 100"),
+  uasScore: z.number().min(0, "Nilai UAS minimal 0").max(100, "Nilai UAS maksimal 100"),
+});
+
+const attendanceMeetingSchema = z.object({
+  studentNim: z.string().min(1, "NIM tidak boleh kosong"),
+  meetingNo: z.number().int().min(1, "Pertemuan minimal 1").max(12, "Pertemuan maksimal 12"),
+  score: z.number().min(0, "Nilai presensi minimal 0").max(100, "Nilai presensi maksimal 100"),
+});
+
 /**
  * Simpan / perbarui Nilai Ujian (UTS / UAS) mahasiswa
  */
@@ -103,23 +119,54 @@ export async function updateExamScoreAction(
   uasScore: number
 ) {
   const session = await getSession();
-  if (!session) throw new Error("Akses ditolak");
+  if (!session) {
+    return { success: false, message: "Akses ditolak. Silakan login." };
+  }
 
-  await prisma.finalGrade.upsert({
-    where: { studentNim },
-    update: {
-      utsScore,
-      uasScore,
-    },
-    create: {
-      studentNim,
-      utsScore,
-      uasScore,
-    },
-  });
+  const parsed = examScoreSchema.safeParse({ studentNim, utsScore, uasScore });
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message || "Validasi gagal",
+    };
+  }
 
-  revalidatePath("/rekap-nilai");
-  return { success: true };
+  try {
+    const student = await prisma.student.findUnique({
+      where: { nim: parsed.data.studentNim },
+      select: { assistantId: true },
+    });
+
+    if (!student) {
+      return { success: false, message: "Praktikan tidak ditemukan." };
+    }
+
+    if (session.role !== "ADMIN" && student.assistantId !== session.userId) {
+      return {
+        success: false,
+        message: "Akses ditolak. Anda tidak memiliki hak akses untuk praktikan ini.",
+      };
+    }
+
+    await prisma.finalGrade.upsert({
+      where: { studentNim: parsed.data.studentNim },
+      update: {
+        utsScore: parsed.data.utsScore,
+        uasScore: parsed.data.uasScore,
+      },
+      create: {
+        studentNim: parsed.data.studentNim,
+        utsScore: parsed.data.utsScore,
+        uasScore: parsed.data.uasScore,
+      },
+    });
+
+    revalidatePath("/rekap-nilai");
+    return { success: true, message: "Nilai ujian berhasil disimpan." };
+  } catch (error) {
+    console.error("updateExamScoreAction failed", error);
+    return { success: false, message: "Gagal menyimpan nilai ujian." };
+  }
 }
 
 /**
@@ -131,23 +178,54 @@ export async function updateAttendanceMeetingAction(
   score: number
 ) {
   const session = await getSession();
-  if (!session) throw new Error("Akses ditolak");
+  if (!session) {
+    return { success: false, message: "Akses ditolak. Silakan login." };
+  }
 
-  await prisma.attendance.upsert({
-    where: {
-      studentNim_meetingNo: {
-        studentNim,
-        meetingNo,
+  const parsed = attendanceMeetingSchema.safeParse({ studentNim, meetingNo, score });
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message || "Validasi gagal",
+    };
+  }
+
+  try {
+    const student = await prisma.student.findUnique({
+      where: { nim: parsed.data.studentNim },
+      select: { assistantId: true },
+    });
+
+    if (!student) {
+      return { success: false, message: "Praktikan tidak ditemukan." };
+    }
+
+    if (session.role !== "ADMIN" && student.assistantId !== session.userId) {
+      return {
+        success: false,
+        message: "Akses ditolak. Anda tidak memiliki hak akses untuk praktikan ini.",
+      };
+    }
+
+    await prisma.attendance.upsert({
+      where: {
+        studentNim_meetingNo: {
+          studentNim: parsed.data.studentNim,
+          meetingNo: parsed.data.meetingNo,
+        },
       },
-    },
-    update: { score },
-    create: {
-      studentNim,
-      meetingNo,
-      score,
-    },
-  });
+      update: { score: parsed.data.score },
+      create: {
+        studentNim: parsed.data.studentNim,
+        meetingNo: parsed.data.meetingNo,
+        score: parsed.data.score,
+      },
+    });
 
-  revalidatePath("/rekap-nilai");
-  return { success: true };
+    revalidatePath("/rekap-nilai");
+    return { success: true, message: "Presensi berhasil disimpan." };
+  } catch (error) {
+    console.error("updateAttendanceMeetingAction failed", error);
+    return { success: false, message: "Gagal menyimpan presensi." };
+  }
 }

@@ -3,9 +3,12 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
-const SECRET_KEY = new TextEncoder().encode(
-  process.env.AUTH_SECRET || "fallback_secret_key_minimum_32_characters_long_for_security"
-);
+const authSecret = process.env.AUTH_SECRET;
+if (!authSecret) {
+  throw new Error("AUTH_SECRET environment variable is required and must be set.");
+}
+
+const SECRET_KEY = new TextEncoder().encode(authSecret);
 
 const SESSION_COOKIE_NAME = "asprak_session";
 const SESSION_DURATION = 7 * 24 * 60 * 60; // 7 hari

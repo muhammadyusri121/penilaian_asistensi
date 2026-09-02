@@ -3,7 +3,12 @@ import { z } from "zod";
 export const gradeSchema = z.object({
   studentNim: z.string().min(1, "NIM praktikan tidak boleh kosong"),
   moduleId: z.string().min(1, "Modul ID tidak boleh kosong"),
-  asistensiDate: z.string().optional(),
+  asistensiDate: z
+    .string()
+    .refine((val) => !val || !isNaN(Date.parse(val)), {
+      message: "Format tanggal asistensi tidak valid",
+    })
+    .optional(),
 
   // Asistensi Code (55%)
   taskConformity: z.number().min(0).max(22, "Kesesuaian tugas maksimal 22"),

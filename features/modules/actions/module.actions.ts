@@ -4,10 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/security";
 import { revalidatePath } from "next/cache";
 
-/**
- * Seeding default modul praktikum (Modul 1..7 + Laporan Akhir) jika belum ada modul
- */
-export async function seedInitialModulesAction(): Promise<void> {
+async function ensureInitialModules(): Promise<void> {
   const count = await prisma.module.count();
   if (count === 0) {
     const defaultModules = [
@@ -31,13 +28,25 @@ export async function seedInitialModulesAction(): Promise<void> {
  * Dapatkan seluruh modul praktikum yang aktif
  */
 export async function getModulesAction() {
-  await seedInitialModulesAction();
+  const session = await getSession();
+  if (!session) return [];
+
+  await ensureInitialModules();
+
+  const submissionsWhere =
+    session.role === "ADMIN"
+      ? {}
+      : { student: { assistantId: session.userId } };
 
   return prisma.module.findMany({
     orderBy: { orderIndex: "asc" },
     include: {
       _count: {
-        select: { submissions: true },
+        select: {
+          submissions: {
+            where: submissionsWhere,
+          },
+        },
       },
     },
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { importStudentsAction } from "../actions/student.actions";
@@ -26,16 +26,36 @@ export function ImportStudentModal({ isOpen, onClose, onSuccess }: ImportStudent
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  const readerRef = useRef<FileReader | null>(null);
+  const selectionIdRef = useRef(0);
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     setErrorMsg(null);
     setSuccessMsg(null);
+    setParsedRows([]);
+
+    if (readerRef.current) {
+      try {
+        readerRef.current.abort();
+      } catch {
+        // ignore
+      }
+    }
+
+    const currentSelectionId = ++selectionIdRef.current;
     const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
+    if (!selectedFile) {
+      setFile(null);
+      return;
+    }
 
     setFile(selectedFile);
 
     const reader = new FileReader();
+    readerRef.current = reader;
+
     reader.onload = (evt) => {
+      if (selectionIdRef.current !== currentSelectionId) return;
       try {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: "binary" });

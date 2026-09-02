@@ -3,9 +3,9 @@ version: "alpha"
 name: "Neubrutalism"
 description: "Neubrutalist interface. Ideal for landing pages, saas. AI-ready template."
 colors:
-  primary: "#38f748ff"
-  secondary: "#4aebf7ff"
-  tertiary: "#f32fd2ff"
+  primary: "#FFEB3B"
+  secondary: "#FF5252"
+  tertiary: "#2196F3"
   neutral: "#000000"
 typography:
   h1:

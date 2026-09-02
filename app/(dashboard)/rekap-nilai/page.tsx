@@ -33,7 +33,7 @@ export default async function RekapNilaiPage() {
             Rekap Nilai Akhir Semester (100%)
           </h1>
           <p className="text-xs md:text-sm font-medium text-neutral-800">
-            Formula: Kehadiran 12x (10%) + Rata-rata Modul (20%) + Pretest (10%) + UTS (25%) + UAS (35%) = Total (100%) $\rightarrow$ Huruf Mutu.
+            Formula: Kehadiran 12x (10%) + Rata-rata Modul (20%) + Pretest (10%) + UTS (25%) + UAS (35%) = Total (100%) → Huruf Mutu.
           </p>
         </div>
       </div>

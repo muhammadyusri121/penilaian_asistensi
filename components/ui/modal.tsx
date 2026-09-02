@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 
 interface ModalProps {
@@ -12,17 +12,64 @@ interface ModalProps {
 }
 
 export function Modal({ isOpen, onClose, title, children, maxWidth = "lg" }: ModalProps) {
+  const modalRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
+    if (!isOpen) return;
+
+    previouslyFocusedElementRef.current = document.activeElement as HTMLElement | null;
+    document.body.style.overflow = "hidden";
+
+    // Pindahkan fokus ke modal saat terbuka
+    const modalElement = modalRef.current;
+    if (modalElement) {
+      const focusable = modalElement.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length > 0) {
+        focusable[0]?.focus();
+      } else {
+        modalElement.focus();
+      }
+    }
+
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      // Trap focus
+      if (e.key === "Tab" && modalElement) {
+        const focusables = modalElement.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusables.length === 0) return;
+
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last?.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first?.focus();
+          }
+        }
+      }
     }
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-      window.addEventListener("keydown", handleKeyDown);
-    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
     return () => {
       document.body.style.overflow = "unset";
       window.removeEventListener("keydown", handleKeyDown);
+      previouslyFocusedElementRef.current?.focus();
     };
   }, [isOpen, onClose]);
 
@@ -37,16 +84,28 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "lg" }: Mod
   }[maxWidth];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
-        className={`neo-box w-full ${maxWidthClass} bg-white max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-150`}
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        tabIndex={-1}
+        className={`neo-box w-full ${maxWidthClass} bg-white max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-150 outline-hidden`}
       >
         <div className="flex items-center justify-between border-b-3 border-black p-4 bg-[#FFEB3B]">
-          <h2 className="text-base md:text-lg font-black uppercase tracking-tight text-black">{title}</h2>
+          <h2 id="modal-title" className="text-base md:text-lg font-black uppercase tracking-tight text-black">
+            {title}
+          </h2>
           <button
             onClick={onClose}
             className="neo-btn p-1 bg-white hover:bg-neutral-100 text-black cursor-pointer"
-            aria-label="Tutup"
+            aria-label="Tutup Dialog"
           >
             <X className="w-5 h-5" />
           </button>

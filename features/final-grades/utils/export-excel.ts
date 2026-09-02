@@ -12,6 +12,8 @@ interface ExportSemesterData {
     attendanceScores: number[];
     moduleScores: number[];
     pretestScoresArray: number[];
+    rawUtsScore: number;
+    rawUasScore: number;
     summary: {
       attendanceScore: number;
       assignmentsScore: number;
@@ -67,10 +69,10 @@ export function exportSemesterToExcel(data: ExportSemesterData, filename = "Reka
       // Pretest scores
       ...item.pretestScoresArray,
       item.summary.pretestScore,
-      // UTS & UAS
-      item.summary.utsScore / 0.25, // Nilai murni
+      // UTS & UAS (menggunakan nilai murni langsung tanpa pembagian float)
+      item.rawUtsScore,
       item.summary.utsScore,
-      item.summary.uasScore / 0.35, // Nilai murni
+      item.rawUasScore,
       item.summary.uasScore,
       // Total & Grade
       item.summary.totalScore,

@@ -186,7 +186,7 @@ Untuk efisiensi asisten lab saat menilai puluhan mahasiswa sekaligus:
 
 ## 6. Desain Antarmuka: Neubrutalism
 
-Mengikuti spesifikasi [design.md](file:///home/zeroo/Data/LABORATORIUM/penilaian_asistensi/design.md):
+Mengikuti spesifikasi [design.md](./design.md):
 * **Borders & Shadows:** Border hitam solid `3px solid #000000` dengan hard offset drop shadow `4px 4px 0 #000000`.
 * **Palet Warna:**
   - Primary Surface: Kuning Cerah `#FFEB3B`

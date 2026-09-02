@@ -22,6 +22,8 @@ interface SemesterTableViewProps {
       attendanceScores: number[];
       moduleScores: number[];
       pretestScoresArray: number[];
+      rawUtsScore: number;
+      rawUasScore: number;
       summary: {
         attendanceScore: number;
         assignmentsScore: number;
@@ -48,6 +50,7 @@ export function SemesterTableView({ data }: SemesterTableViewProps) {
   const [utsInput, setUtsInput] = useState<number>(0);
   const [uasInput, setUasInput] = useState<number>(0);
   const [loading, setLoading] = useState(false);
+  const [examError, setExamError] = useState<string | null>(null);
 
   const filtered = data.students.filter((item) => {
     const q = search.toLowerCase();
@@ -63,8 +66,9 @@ export function SemesterTableView({ data }: SemesterTableViewProps) {
   }
 
   function openExamModal(item: (typeof data.students)[0]) {
-    const utsMurni = item.summary.utsScore / 0.25;
-    const uasMurni = item.summary.uasScore / 0.35;
+    const utsMurni = item.rawUtsScore;
+    const uasMurni = item.rawUasScore;
+    setExamError(null);
     setSelectedStudentForExam({
       nim: item.student.nim,
       name: item.student.name,
@@ -79,13 +83,18 @@ export function SemesterTableView({ data }: SemesterTableViewProps) {
     e.preventDefault();
     if (!selectedStudentForExam) return;
     setLoading(true);
+    setExamError(null);
 
     try {
-      await updateExamScoreAction(selectedStudentForExam.nim, utsInput, uasInput);
-      setSelectedStudentForExam(null);
-      router.refresh();
+      const res = await updateExamScoreAction(selectedStudentForExam.nim, utsInput, uasInput);
+      if (res.success) {
+        setSelectedStudentForExam(null);
+        router.refresh();
+      } else {
+        setExamError(res.message || "Gagal menyimpan nilai ujian.");
+      }
     } catch {
-      alert("Gagal menyimpan nilai ujian.");
+      setExamError("Terjadi kendala koneksi ke server.");
     } finally {
       setLoading(false);
     }
@@ -281,7 +290,7 @@ export function SemesterTableView({ data }: SemesterTableViewProps) {
 
                       {/* UTS */}
                       <td className="p-1 border-r border-neutral-200 text-center font-medium">
-                        {sum.utsScore > 0 ? sum.utsScore / 0.25 : "-"}
+                        {item.rawUtsScore > 0 ? item.rawUtsScore : "-"}
                       </td>
                       <td className="p-1 border-r border-neutral-300 text-center font-black bg-orange-50 text-orange-900">
                         {sum.utsScore > 0 ? sum.utsScore : "-"}
@@ -289,7 +298,7 @@ export function SemesterTableView({ data }: SemesterTableViewProps) {
 
                       {/* UAS */}
                       <td className="p-1 border-r border-neutral-200 text-center font-medium">
-                        {sum.uasScore > 0 ? sum.uasScore / 0.35 : "-"}
+                        {item.rawUasScore > 0 ? item.rawUasScore : "-"}
                       </td>
                       <td className="p-1 border-r border-neutral-300 text-center font-black bg-rose-50 text-rose-900">
                         {sum.uasScore > 0 ? sum.uasScore : "-"}
@@ -348,6 +357,12 @@ export function SemesterTableView({ data }: SemesterTableViewProps) {
           <p className="text-xs text-neutral-600 font-bold">
             Masukkan nilai murni (0 - 100) untuk UTS dan UAS mahasiswa <strong className="text-black">{selectedStudentForExam?.nim}</strong>.
           </p>
+
+          {examError && (
+            <div className="neo-box-sm bg-[#FF5252] text-white p-2.5 text-xs font-black">
+              ⚠️ {examError}
+            </div>
+          )}
 
           <Input
             label="Nilai Murni UTS (Bobot 25%)"

@@ -60,7 +60,7 @@ export function LoginForm() {
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
             <User className="w-4 h-4 text-black" />
-            <label className="text-xs font-black uppercase tracking-wider text-black">
+            <label htmlFor="username" className="text-xs font-black uppercase tracking-wider text-black">
               Username / Kode Asprak
             </label>
           </div>
@@ -78,7 +78,7 @@ export function LoginForm() {
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
             <KeyRound className="w-4 h-4 text-black" />
-            <label className="text-xs font-black uppercase tracking-wider text-black">
+            <label htmlFor="password" className="text-xs font-black uppercase tracking-wider text-black">
               Password
             </label>
           </div>
