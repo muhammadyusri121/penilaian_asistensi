@@ -1,0 +1,187 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  ASISTEN
+}
+
+enum SubmissionStatus {
+  NOT_SUBMITTED
+  SUBMITTED
+  GRADED
+}
+
+enum FileType {
+  PDF
+  VIDEO
+  IMAGE
+  ARCHIVE
+}
+
+// Akun Pengguna Internal (Hanya Asisten & Admin Lab)
+model User {
+  id           String       @id @default(uuid())
+  username     String       @unique // Kode Asprak / NIP
+  name         String
+  email        String?      @unique
+  passwordHash String
+  role         Role         @default(ASISTEN)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  students     Student[]    @relation("AssistantStudents")
+  gradedItems  Grade[]      @relation("AssistantGrades")
+}
+
+// Data Praktikan (Di-import oleh masing-masing Asprak via Excel/CSV)
+model Student {
+  nim          String       @id // Primary Key: NIM Mahasiswa
+  name         String       // Nama Lengkap Praktikan
+  classGroup   String?      // Contoh: "Kelas A", "Shift Senin 08:00", "Kelompok 2"
+  assistantId  String?      // Asisten pembimbing yang mengampu
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  assistant    User?        @relation("AssistantStudents", fields: [assistantId], references: [id], onDelete: SetNull)
+  submissions  Submission[]
+  attendances  Attendance[]
+  pretestScores PretestScore[]
+  finalGrade   FinalGrade?
+}
+
+model Module {
+  id            String       @id @default(uuid())
+  title         String       // Contoh: "Modul 1: Pointer", "Laporan Akhir"
+  orderIndex    Int          // Urutan modul
+  description   String?
+  deadline      DateTime?
+  isFinalReport Boolean      @default(false) // Menandai jika entri ini adalah Laporan Akhir
+  createdAt     DateTime     @default(now())
+
+  submissions   Submission[]
+}
+
+// Data Tugas/Berkas Praktikan per Modul (Dicatat/Diarsipkan oleh Asprak)
+model Submission {
+  id           String           @id @default(uuid())
+  studentNim   String
+  moduleId     String
+  githubUrl    String?
+  demoUrl      String?
+  submittedAt  DateTime         @default(now())
+  status       SubmissionStatus @default(SUBMITTED)
+
+  student      Student          @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+  module       Module           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  files        SubmissionFile[]
+  grade        Grade?
+
+  @@unique([studentNim, moduleId])
+}
+
+model SubmissionFile {
+  id           String     @id @default(uuid())
+  submissionId String
+  fileName     String
+  fileKey      String     // Path penyimpanan di MinIO / S3
+  fileUrl      String
+  fileType     FileType
+  fileSizeBytes Int
+  createdAt    DateTime   @default(now())
+
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+}
+
+// Lembar Penilaian Asistensi per Modul
+model Grade {
+  id                    String     @id @default(uuid())
+  submissionId          String     @unique
+  assistantId           String     // Asprak yang menilai
+  asistensiDate         DateTime   @default(now())
+
+  // Komponen 1: Asistensi Code (55%)
+  taskConformity        Float      @default(0) // Max 22
+  programExplanation    Float      @default(0) // Max 19
+  attendance            Float      @default(0) // Max 8
+  attitude              Float      @default(0) // Max 6
+
+  // Komponen 2: Laporan Resmi (35%)
+  reportDiscussion      Float      @default(0) // Max 12
+  reportFormat          Float      @default(0) // Max 10.5
+  plagiarism            Float      @default(0) // Max 9
+  neatness              Float      @default(0) // Max 3.5
+
+  // Komponen 3: Pengumpulan (10%)
+  submissionPunctuality Float      @default(0) // Max 10
+
+  // Total Nilai Modul (Max 100)
+  totalScore            Float      @default(0)
+  notes                 String?
+
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  submission            Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  assistant             User       @relation("AssistantGrades", fields: [assistantId], references: [id])
+}
+
+// Presensi 12 Pertemuan
+model Attendance {
+  id           String     @id @default(uuid())
+  studentNim   String
+  meetingNo    Int        // 1 s.d. 12
+  score        Float      @default(100) // Nilai 0 - 100
+  createdAt    DateTime   @default(now())
+
+  student      Student    @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+
+  @@unique([studentNim, meetingNo])
+}
+
+// Pretest Dinamis
+model Pretest {
+  id          String         @id @default(uuid())
+  title       String         // Contoh: "Pretest 1", "Pretest 2"
+  orderIndex  Int
+  createdAt   DateTime       @default(now())
+
+  scores      PretestScore[]
+}
+
+model PretestScore {
+  id          String   @id @default(uuid())
+  pretestId   String
+  studentNim  String
+  score       Float    @default(0) // 0 - 100
+  createdAt   DateTime @default(now())
+
+  pretest     Pretest  @relation(fields: [pretestId], references: [id], onDelete: Cascade)
+  student     Student  @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+
+  @@unique([studentNim, pretestId])
+}
+
+// Rekapitulasi Nilai Akhir Semester Praktikan
+model FinalGrade {
+  id                 String   @id @default(uuid())
+  studentNim         String   @unique
+
+  attendanceScore    Float    @default(0) // Rata-rata kehadiran (10%)
+  assignmentsScore   Float    @default(0) // Rata-rata modul 1..N + Lap Akhir (20%)
+  pretestScore       Float    @default(0) // Rata-rata pretest dinamis (10%)
+  utsScore           Float    @default(0) // Nilai Murni UTS (25%)
+  uasScore           Float    @default(0) // Nilai Murni UAS (35%)
+
+  totalScore         Float    @default(0) // Total Angka 0 - 100
+  gradeLetter        String?  // 'A', 'B+', 'B', 'C+', 'C', 'D', 'E'
+
+  updatedAt          DateTime @updatedAt
+
+  student            Student  @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+}
