@@ -65,7 +65,9 @@ export async function importStudentsAction(
       where: { nim: { in: nims } },
       select: { nim: true, assistantId: true },
     });
-    const existingMap = new Map(existingStudents.map((s) => [s.nim, s]));
+    const existingMap = new Map<string, { nim: string; assistantId: string | null }>(
+      existingStudents.map((s: { nim: string; assistantId: string | null }) => [s.nim, s])
+    );
 
     const toCreate: Array<{ nim: string; name: string; classGroup: string | null; assistantId: string }> = [];
     const updateOperations = [];
