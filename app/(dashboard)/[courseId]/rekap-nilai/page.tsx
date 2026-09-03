@@ -36,7 +36,7 @@ export default async function CourseRekapNilaiPage({
         </p>
       </div>
 
-      <SemesterTableView data={data} />
+      <SemesterTableView data={data} courseId={courseId} />
     </div>
   );
 }

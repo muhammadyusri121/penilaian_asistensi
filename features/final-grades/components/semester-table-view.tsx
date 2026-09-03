@@ -10,6 +10,7 @@ import { Download, Search, Edit3 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface SemesterTableViewProps {
+  courseId?: string;
   data: {
     modules: Array<{ id: string; title: string; orderIndex: number; isFinalReport: boolean }>;
     pretests: Array<{ id: string; title: string; orderIndex: number }>;
@@ -37,7 +38,7 @@ interface SemesterTableViewProps {
   };
 }
 
-export function SemesterTableView({ data }: SemesterTableViewProps) {
+export function SemesterTableView({ data, courseId }: SemesterTableViewProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [selectedStudentForExam, setSelectedStudentForExam] = useState<{
@@ -86,7 +87,12 @@ export function SemesterTableView({ data }: SemesterTableViewProps) {
     setExamError(null);
 
     try {
-      const res = await updateExamScoreAction(selectedStudentForExam.nim, utsInput, uasInput);
+      const res = await updateExamScoreAction({
+        studentNim: selectedStudentForExam.nim,
+        utsScore: utsInput,
+        uasScore: uasInput,
+        courseId,
+      });
       if (res.success) {
         setSelectedStudentForExam(null);
         router.refresh();
