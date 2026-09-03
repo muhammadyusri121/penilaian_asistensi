@@ -4,42 +4,92 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/security";
 import { calculateSemesterFinalGrade } from "@/features/grading/utils/calculate";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+const examScoreSchema = z.object({
+  studentNim: z.string().min(1, "NIM wajib diisi"),
+  utsScore: z.number().min(0).max(100),
+  uasScore: z.number().min(0).max(100),
+  courseId: z.string().optional(),
+});
+
+const attendanceMeetingSchema = z.object({
+  studentNim: z.string().min(1, "NIM wajib diisi"),
+  meetingNo: z.number().int().min(1).max(12),
+  score: z.number().min(0).max(100),
+  courseId: z.string().optional(),
+});
+
+export type ExamScoreInput = z.infer<typeof examScoreSchema>;
 
 /**
  * Ambil data rekapitulasi semester seluruh praktikan beserta kalkulasi nilai akhir
  */
-export async function getSemesterSummaryAction() {
+export async function getSemesterSummaryAction(courseId?: string) {
   const session = await getSession();
   if (!session) return null;
 
-  const whereClause = session.role === "ADMIN" ? {} : { assistantId: session.userId };
+  let targetCourseId = courseId;
+  if (!targetCourseId) {
+    const firstCourse = await prisma.course.findFirst({
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    if (firstCourse) {
+      targetCourseId = firstCourse.id;
+    }
+  }
 
-  const [students, modules, pretests] = await Promise.all([
-    prisma.student.findMany({
-      where: whereClause,
-      orderBy: { nim: "asc" },
+  if (!targetCourseId) {
+    return {
+      modules: [],
+      pretests: [],
+      students: [],
+    };
+  }
+
+  const enrollmentWhere =
+    session.role === "ADMIN"
+      ? { courseId: targetCourseId }
+      : { courseId: targetCourseId, assistantId: session.userId };
+
+  const [enrollments, modules, pretests] = await Promise.all([
+    prisma.courseEnrollment.findMany({
+      where: enrollmentWhere,
+      orderBy: { studentNim: "asc" },
       include: {
-        attendances: true,
-        submissions: {
+        assistant: { select: { name: true, username: true } },
+        student: {
           include: {
-            grade: true,
+            attendances: { where: { courseId: targetCourseId } },
+            submissions: {
+              where: { module: { courseId: targetCourseId } },
+              include: { grade: true },
+            },
+            pretestScores: {
+              where: { pretest: { courseId: targetCourseId } },
+            },
+            finalGrades: {
+              where: { courseId: targetCourseId },
+            },
           },
         },
-        pretestScores: true,
-        finalGrade: true,
-        assistant: { select: { name: true, username: true } },
       },
     }),
     prisma.module.findMany({
+      where: { courseId: targetCourseId },
       orderBy: { orderIndex: "asc" },
     }),
     prisma.pretest.findMany({
+      where: { courseId: targetCourseId },
       orderBy: { orderIndex: "asc" },
     }),
   ]);
 
   // Kalkulasi data untuk setiap mahasiswa
-  const processedStudents = students.map((student) => {
+  const processedStudents = enrollments.map((en) => {
+    const student = en.student;
+
     // 1. Kehadiran 12x
     const attendanceMap = new Map<number, number>();
     for (const att of student.attendances) {
@@ -47,7 +97,7 @@ export async function getSemesterSummaryAction() {
     }
     const attendanceScores: number[] = [];
     for (let i = 1; i <= 12; i++) {
-      attendanceScores.push(attendanceMap.get(i) ?? 100); // default 100 jika hadir
+      attendanceScores.push(attendanceMap.get(i) ?? 100);
     }
 
     // 2. Modul scores
@@ -66,25 +116,32 @@ export async function getSemesterSummaryAction() {
     }
     const pretestScoresArray = pretests.map((p) => pretestMap.get(p.id) ?? 0);
 
-    // UTS & UAS
-    const uts = student.finalGrade?.utsScore ?? 0;
-    const uas = student.finalGrade?.uasScore ?? 0;
+    // 4. UTS & UAS
+    const finalGradeRecord = student.finalGrades[0];
+    const rawUtsScore = finalGradeRecord?.utsScore ?? 0;
+    const rawUasScore = finalGradeRecord?.uasScore ?? 0;
 
+    // Hitung seluruh komponen semester (0..100%)
     const summary = calculateSemesterFinalGrade({
       attendances: attendanceScores,
       moduleScores,
-      pretestScores: pretestScoresArray.length > 0 ? pretestScoresArray : [0],
-      utsScore: uts,
-      uasScore: uas,
+      pretestScores: pretestScoresArray,
+      utsScore: rawUtsScore,
+      uasScore: rawUasScore,
     });
 
     return {
-      student,
+      student: {
+        nim: student.nim,
+        name: student.name,
+        classGroup: en.classGroup,
+        assistant: en.assistant,
+      },
       attendanceScores,
       moduleScores,
       pretestScoresArray,
-      rawUtsScore: uts,
-      rawUasScore: uas,
+      rawUtsScore,
+      rawUasScore,
       summary,
     };
   });
@@ -96,34 +153,16 @@ export async function getSemesterSummaryAction() {
   };
 }
 
-import { z } from "zod";
-
-const examScoreSchema = z.object({
-  studentNim: z.string().min(1, "NIM tidak boleh kosong"),
-  utsScore: z.number().min(0, "Nilai UTS minimal 0").max(100, "Nilai UTS maksimal 100"),
-  uasScore: z.number().min(0, "Nilai UAS minimal 0").max(100, "Nilai UAS maksimal 100"),
-});
-
-const attendanceMeetingSchema = z.object({
-  studentNim: z.string().min(1, "NIM tidak boleh kosong"),
-  meetingNo: z.number().int().min(1, "Pertemuan minimal 1").max(12, "Pertemuan maksimal 12"),
-  score: z.number().min(0, "Nilai presensi minimal 0").max(100, "Nilai presensi maksimal 100"),
-});
-
 /**
- * Simpan / perbarui Nilai Ujian (UTS / UAS) mahasiswa
+ * Simpan atau perbarui nilai UTS & UAS praktikan
  */
-export async function updateExamScoreAction(
-  studentNim: string,
-  utsScore: number,
-  uasScore: number
-) {
+export async function updateExamScoreAction(input: ExamScoreInput) {
   const session = await getSession();
   if (!session) {
     return { success: false, message: "Akses ditolak. Silakan login." };
   }
 
-  const parsed = examScoreSchema.safeParse({ studentNim, utsScore, uasScore });
+  const parsed = examScoreSchema.safeParse(input);
   if (!parsed.success) {
     return {
       success: false,
@@ -131,37 +170,64 @@ export async function updateExamScoreAction(
     };
   }
 
+  const { studentNim, utsScore, uasScore, courseId } = parsed.data;
+
   try {
-    const student = await prisma.student.findUnique({
-      where: { nim: parsed.data.studentNim },
+    let targetCourseId = courseId;
+    if (!targetCourseId) {
+      const enrollment = await prisma.courseEnrollment.findFirst({
+        where: { studentNim },
+        select: { courseId: true, assistantId: true },
+      });
+      if (!enrollment) {
+        return { success: false, message: "Praktikan belum terdaftar di mata kuliah manapun." };
+      }
+      targetCourseId = enrollment.courseId;
+    }
+
+    // Verifikasi hak akses
+    const enrollment = await prisma.courseEnrollment.findUnique({
+      where: {
+        courseId_studentNim: {
+          courseId: targetCourseId,
+          studentNim,
+        },
+      },
       select: { assistantId: true },
     });
 
-    if (!student) {
-      return { success: false, message: "Praktikan tidak ditemukan." };
+    if (!enrollment) {
+      return { success: false, message: "Praktikan tidak ditemukan di mata kuliah ini." };
     }
 
-    if (session.role !== "ADMIN" && student.assistantId !== session.userId) {
+    if (session.role !== "ADMIN" && enrollment.assistantId !== session.userId) {
       return {
         success: false,
-        message: "Akses ditolak. Anda tidak memiliki hak akses untuk praktikan ini.",
+        message: "Akses ditolak. Anda tidak berwenang untuk menilai praktikan ini.",
       };
     }
 
     await prisma.finalGrade.upsert({
-      where: { studentNim: parsed.data.studentNim },
+      where: {
+        courseId_studentNim: {
+          courseId: targetCourseId,
+          studentNim,
+        },
+      },
       update: {
-        utsScore: parsed.data.utsScore,
-        uasScore: parsed.data.uasScore,
+        utsScore,
+        uasScore,
       },
       create: {
-        studentNim: parsed.data.studentNim,
-        utsScore: parsed.data.utsScore,
-        uasScore: parsed.data.uasScore,
+        courseId: targetCourseId,
+        studentNim,
+        utsScore,
+        uasScore,
       },
     });
 
     revalidatePath("/rekap-nilai");
+    revalidatePath(`/${targetCourseId}/rekap-nilai`);
     return { success: true, message: "Nilai ujian berhasil disimpan." };
   } catch (error) {
     console.error("updateExamScoreAction failed", error);
@@ -175,14 +241,15 @@ export async function updateExamScoreAction(
 export async function updateAttendanceMeetingAction(
   studentNim: string,
   meetingNo: number,
-  score: number
+  score: number,
+  courseId?: string
 ) {
   const session = await getSession();
   if (!session) {
     return { success: false, message: "Akses ditolak. Silakan login." };
   }
 
-  const parsed = attendanceMeetingSchema.safeParse({ studentNim, meetingNo, score });
+  const parsed = attendanceMeetingSchema.safeParse({ studentNim, meetingNo, score, courseId });
   if (!parsed.success) {
     return {
       success: false,
@@ -191,38 +258,59 @@ export async function updateAttendanceMeetingAction(
   }
 
   try {
-    const student = await prisma.student.findUnique({
-      where: { nim: parsed.data.studentNim },
+    let targetCourseId = courseId;
+    if (!targetCourseId) {
+      const enrollment = await prisma.courseEnrollment.findFirst({
+        where: { studentNim },
+        select: { courseId: true },
+      });
+      if (!enrollment) {
+        return { success: false, message: "Praktikan belum terdaftar di mata kuliah manapun." };
+      }
+      targetCourseId = enrollment.courseId;
+    }
+
+    // Verifikasi hak akses
+    const enrollment = await prisma.courseEnrollment.findUnique({
+      where: {
+        courseId_studentNim: {
+          courseId: targetCourseId,
+          studentNim,
+        },
+      },
       select: { assistantId: true },
     });
 
-    if (!student) {
-      return { success: false, message: "Praktikan tidak ditemukan." };
+    if (!enrollment) {
+      return { success: false, message: "Praktikan tidak ditemukan di mata kuliah ini." };
     }
 
-    if (session.role !== "ADMIN" && student.assistantId !== session.userId) {
+    if (session.role !== "ADMIN" && enrollment.assistantId !== session.userId) {
       return {
         success: false,
-        message: "Akses ditolak. Anda tidak memiliki hak akses untuk praktikan ini.",
+        message: "Akses ditolak. Anda tidak berwenang untuk menilai praktikan ini.",
       };
     }
 
     await prisma.attendance.upsert({
       where: {
-        studentNim_meetingNo: {
-          studentNim: parsed.data.studentNim,
-          meetingNo: parsed.data.meetingNo,
+        courseId_studentNim_meetingNo: {
+          courseId: targetCourseId,
+          studentNim,
+          meetingNo,
         },
       },
-      update: { score: parsed.data.score },
+      update: { score },
       create: {
-        studentNim: parsed.data.studentNim,
-        meetingNo: parsed.data.meetingNo,
-        score: parsed.data.score,
+        courseId: targetCourseId,
+        studentNim,
+        meetingNo,
+        score,
       },
     });
 
     revalidatePath("/rekap-nilai");
+    revalidatePath(`/${targetCourseId}/rekap-nilai`);
     return { success: true, message: "Presensi berhasil disimpan." };
   } catch (error) {
     console.error("updateAttendanceMeetingAction failed", error);

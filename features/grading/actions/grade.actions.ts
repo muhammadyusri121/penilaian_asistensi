@@ -31,17 +31,20 @@ export async function saveGradeAction(input: GradeInput): Promise<GradeActionRes
 
   const data = parsed.data;
 
-  // Verifikasi hak akses: asisten hanya boleh menilai praktikan binaannya (ADMIN memiliki akses penuh)
-  const student = await prisma.student.findUnique({
-    where: { nim: data.studentNim },
-    select: { assistantId: true },
+  // Verifikasi hak akses: asisten hanya boleh menilai praktikan binaannya di course ini (ADMIN memiliki akses penuh)
+  const enrollment = await prisma.courseEnrollment.findFirst({
+    where: {
+      studentNim: data.studentNim,
+      course: { modules: { some: { id: data.moduleId } } },
+    },
+    select: { assistantId: true, courseId: true },
   });
 
-  if (!student) {
-    return { success: false, message: "Data praktikan tidak ditemukan." };
+  if (!enrollment) {
+    return { success: false, message: "Data praktikan tidak terdaftar di mata kuliah modul ini." };
   }
 
-  if (session.role !== "ADMIN" && student.assistantId !== session.userId) {
+  if (session.role !== "ADMIN" && enrollment.assistantId !== session.userId) {
     return {
       success: false,
       message: "Akses ditolak. Anda tidak berwenang untuk menilai praktikan ini.",
@@ -62,8 +65,9 @@ export async function saveGradeAction(input: GradeInput): Promise<GradeActionRes
   });
 
   try {
+    // Jalankan Prisma Interactive Transaction untuk menjamin atomic write
     await prisma.$transaction(async (tx) => {
-      // 1. Pastikan record Submission ada
+      // 1. Upsert Submission
       const submission = await tx.submission.upsert({
         where: {
           studentNim_moduleId: {
@@ -72,20 +76,16 @@ export async function saveGradeAction(input: GradeInput): Promise<GradeActionRes
           },
         },
         update: {
-          githubUrl: data.githubUrl || null,
-          demoUrl: data.demoUrl || null,
           status: "GRADED",
         },
         create: {
           studentNim: data.studentNim,
           moduleId: data.moduleId,
-          githubUrl: data.githubUrl || null,
-          demoUrl: data.demoUrl || null,
           status: "GRADED",
         },
       });
 
-      // 2. Simpan / perbarui Grade
+      // 2. Upsert Grade
       await tx.grade.upsert({
         where: {
           submissionId: submission.id,
@@ -125,18 +125,20 @@ export async function saveGradeAction(input: GradeInput): Promise<GradeActionRes
     });
 
     revalidatePath(`/penilaian/${data.moduleId}`);
+    revalidatePath(`/${enrollment.courseId}/penilaian/${data.moduleId}`);
+    revalidatePath("/modul");
     revalidatePath("/rekap-nilai");
 
     return {
       success: true,
-      message: `Nilai berhasil disimpan. Total Skor: ${calc.totalScore}`,
+      message: "Nilai asistensi berhasil disimpan",
       totalScore: calc.totalScore,
     };
   } catch (error) {
-    console.error("saveGradeAction failed", error);
+    console.error("Gagal menyimpan nilai asistensi", error);
     return {
       success: false,
-      message: "Gagal menyimpan nilai asistensi.",
+      message: "Terjadi kesalahan pada database saat menyimpan nilai.",
     };
   }
 }
@@ -154,12 +156,19 @@ export async function getModuleGradingDataAction(moduleId: string) {
 
   if (!moduleInfo) return null;
 
-  const whereClause = session.role === "ADMIN" ? {} : { assistantId: session.userId };
+  const studentWhere =
+    session.role === "ADMIN"
+      ? { enrollments: { some: { courseId: moduleInfo.courseId } } }
+      : { enrollments: { some: { courseId: moduleInfo.courseId, assistantId: session.userId } } };
 
   const students = await prisma.student.findMany({
-    where: whereClause,
+    where: studentWhere,
     orderBy: { nim: "asc" },
     include: {
+      enrollments: {
+        where: { courseId: moduleInfo.courseId },
+        select: { classGroup: true },
+      },
       submissions: {
         where: { moduleId },
         include: {
@@ -178,6 +187,11 @@ export async function getModuleGradingDataAction(moduleId: string) {
 
   return {
     module: moduleInfo,
-    students,
+    students: students.map((s) => ({
+      nim: s.nim,
+      name: s.name,
+      classGroup: s.enrollments[0]?.classGroup || null,
+      submissions: s.submissions,
+    })),
   };
 }

@@ -1,13 +1,21 @@
 import React from "react";
 import { getStudentsAction } from "@/features/students/actions/student.actions";
 import { StudentManager } from "@/features/students/components/student-manager";
+import { prisma } from "@/lib/prisma";
 
 export const metadata = {
   title: "Data Praktikan | Asistensi Lab",
 };
 
 export default async function PraktikanPage() {
-  const students = await getStudentsAction();
+  const activePeriod = await prisma.academicPeriod.findFirst({ where: { isActive: true } });
+  const firstCourse = await prisma.course.findFirst({
+    where: activePeriod ? { academicPeriodId: activePeriod.id } : {},
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+
+  const students = await getStudentsAction(firstCourse?.id);
 
   return (
     <div className="space-y-6">
@@ -20,7 +28,7 @@ export default async function PraktikanPage() {
         </p>
       </div>
 
-      <StudentManager initialStudents={students} />
+      <StudentManager initialStudents={students} courseId={firstCourse?.id} />
     </div>
   );
 }

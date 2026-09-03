@@ -6,8 +6,12 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "postinstall": "prisma generate",
+    "seed:admin": "node prisma/seed.mjs",
     "start": "next start",
     "lint": "eslint"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1124.0",

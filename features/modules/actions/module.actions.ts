@@ -3,44 +3,45 @@
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/security";
 import { revalidatePath } from "next/cache";
-
-async function ensureInitialModules(): Promise<void> {
-  const count = await prisma.module.count();
-  if (count === 0) {
-    const defaultModules = [
-      { title: "Modul 1: Pengenalan Sintaks & Tipe Data", orderIndex: 1, isFinalReport: false },
-      { title: "Modul 2: Struktur Kontrol & Perulangan", orderIndex: 2, isFinalReport: false },
-      { title: "Modul 3: Fungsi & Rekursi", orderIndex: 3, isFinalReport: false },
-      { title: "Modul 4: Array & Pointer Memory", orderIndex: 4, isFinalReport: false },
-      { title: "Modul 5: Struct & Linked List", orderIndex: 5, isFinalReport: false },
-      { title: "Modul 6: Stack & Queue", orderIndex: 6, isFinalReport: false },
-      { title: "Modul 7: Algoritma Searching & Sorting", orderIndex: 7, isFinalReport: false },
-      { title: "Laporan Akhir Praktikum", orderIndex: 8, isFinalReport: true },
-    ];
-
-    await prisma.module.createMany({
-      data: defaultModules,
-    });
-  }
-}
+import { seedInitialCourseIfEmptyAction } from "@/features/courses/actions/course.actions";
 
 /**
  * Dapatkan seluruh modul praktikum yang aktif
  */
-export async function getModulesAction() {
+export async function getModulesAction(courseId?: string) {
   const session = await getSession();
   if (!session) return [];
 
-  await ensureInitialModules();
+  // Pastikan contoh mata kuliah & modul ter-seed jika masih kosong
+  await seedInitialCourseIfEmptyAction();
+
+  let targetCourseId = courseId;
+  if (!targetCourseId) {
+    const firstCourse = await prisma.course.findFirst({
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    if (firstCourse) {
+      targetCourseId = firstCourse.id;
+    }
+  }
+
+  if (!targetCourseId) {
+    return [];
+  }
 
   const submissionsWhere =
     session.role === "ADMIN"
       ? {}
-      : { student: { assistantId: session.userId } };
+      : { student: { enrollments: { some: { assistantId: session.userId, courseId: targetCourseId } } } };
 
   return prisma.module.findMany({
+    where: { courseId: targetCourseId },
     orderBy: { orderIndex: "asc" },
     include: {
+      course: {
+        select: { id: true, code: true, title: true },
+      },
       _count: {
         select: {
           submissions: {
@@ -56,6 +57,7 @@ export async function getModulesAction() {
  * Tambah modul baru secara dinamis
  */
 export async function createModuleAction(data: {
+  courseId?: string;
   title: string;
   orderIndex: number;
   description?: string;
@@ -64,8 +66,21 @@ export async function createModuleAction(data: {
   const session = await getSession();
   if (!session) throw new Error("Akses ditolak");
 
+  let targetCourseId = data.courseId;
+  if (!targetCourseId) {
+    const firstCourse = await prisma.course.findFirst({
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    if (!firstCourse) {
+      throw new Error("Belum ada mata kuliah yang dibuat. Buat mata kuliah terlebih dahulu.");
+    }
+    targetCourseId = firstCourse.id;
+  }
+
   const newMod = await prisma.module.create({
     data: {
+      courseId: targetCourseId,
       title: data.title,
       orderIndex: data.orderIndex,
       description: data.description,
@@ -75,5 +90,6 @@ export async function createModuleAction(data: {
 
   revalidatePath("/modul");
   revalidatePath("/rekap-nilai");
+  revalidatePath(`/${targetCourseId}/modul`);
   return newMod;
 }

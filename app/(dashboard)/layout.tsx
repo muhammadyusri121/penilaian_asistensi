@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import { getSession } from "@/lib/security";
 import { redirect } from "next/navigation";
 import { logoutAction } from "@/features/auth/actions/auth.actions";
@@ -9,6 +10,9 @@ import {
   LogOut,
   ShieldCheck,
   GraduationCap,
+  CalendarRange,
+  UserCheck,
+  Layers,
 } from "lucide-react";
 
 export default async function DashboardLayout({
@@ -21,6 +25,8 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  const isAdmin = session.role === "ADMIN";
+
   return (
     <div className="min-h-[100dvh] flex flex-col bg-[#FDFBF7]">
       {/* Top Navbar */}
@@ -31,12 +37,12 @@ export default async function DashboardLayout({
               <GraduationCap className="w-6 h-6 text-black" />
             </div>
             <div>
-              <a href="/modul" className="text-lg font-black uppercase tracking-tight text-black flex items-center gap-2">
+              <Link href="/praktikum" className="text-lg font-black uppercase tracking-tight text-black flex items-center gap-2">
                 Asistensi Lab
-                <span className="neo-box-sm text-[10px] px-1.5 py-0.2 bg-[#2196F3] text-white">
-                  v1.0
+                <span className="neo-box-sm text-[10px] px-1.5 py-0.5 bg-[#2196F3] text-white">
+                  v1.2
                 </span>
-              </a>
+              </Link>
               <p className="text-[10px] font-bold text-neutral-500 uppercase">
                 Sistem Penilaian Asistensi Praktikum
               </p>
@@ -55,7 +61,7 @@ export default async function DashboardLayout({
             <form action={logoutAction}>
               <button
                 type="submit"
-                className="neo-btn px-3 py-1.5 bg-[#FF5252] text-white text-xs font-black flex items-center gap-1.5 hover:bg-red-600"
+                className="neo-btn px-3 py-1.5 bg-[#FF5252] text-white text-xs font-black flex items-center gap-1.5 hover:bg-red-600 cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Keluar</span>
@@ -66,28 +72,65 @@ export default async function DashboardLayout({
 
         {/* Navigation Bar */}
         <nav className="border-t-2 border-black bg-[#FFEB3B] px-4">
-          <div className="max-w-7xl mx-auto flex items-center gap-1 sm:gap-2 overflow-x-auto py-1">
-            <a
-              href="/modul"
+          <div className="max-w-7xl mx-auto flex items-center gap-1.5 sm:gap-2 overflow-x-auto py-1.5">
+            {/* Katalog Praktikum (Asprak & Admin) */}
+            <Link
+              href="/praktikum"
               className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
             >
               <BookOpen className="w-3.5 h-3.5" />
-              Modul & Asistensi
-            </a>
-            <a
+              Katalog Praktikum
+            </Link>
+
+            {/* Menu Khusus Admin */}
+            {isAdmin && (
+              <>
+                <Link
+                  href="/admin/matakuliah"
+                  className="neo-btn text-xs px-3 py-1.5 bg-black text-white font-black flex items-center gap-1.5 shrink-0 hover:bg-neutral-800"
+                >
+                  <Layers className="w-3.5 h-3.5 text-[#FFEB3B]" />
+                  Master Mata Kuliah
+                </Link>
+                <Link
+                  href="/admin/persetujuan-akun"
+                  className="neo-btn text-xs px-3 py-1.5 bg-black text-white font-black flex items-center gap-1.5 shrink-0 hover:bg-neutral-800"
+                >
+                  <UserCheck className="w-3.5 h-3.5 text-[#00E5FF]" />
+                  ACC Akun Asprak
+                </Link>
+                <Link
+                  href="/admin/periode"
+                  className="neo-btn text-xs px-3 py-1.5 bg-black text-white font-black flex items-center gap-1.5 shrink-0 hover:bg-neutral-800"
+                >
+                  <CalendarRange className="w-3.5 h-3.5 text-[#4CAF50]" />
+                  Periode Semester
+                </Link>
+              </>
+            )}
+
+            {/* Modul Global & Rekap Nilai Legacy Navigation (Tetap tersedia) */}
+            <Link
+              href="/modul"
+              className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-[#2196F3]" />
+              Modul Praktikum
+            </Link>
+            <Link
               href="/praktikan"
               className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
             >
               <Users className="w-3.5 h-3.5" />
               Data Praktikan
-            </a>
-            <a
+            </Link>
+            <Link
               href="/rekap-nilai"
               className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
             >
               <Award className="w-3.5 h-3.5 text-amber-600" />
-              Rekap Nilai Semester (100%)
-            </a>
+              Rekap Nilai Semester
+            </Link>
           </div>
         </nav>
       </header>

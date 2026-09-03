@@ -22,9 +22,10 @@ interface StudentManagerProps {
       grade?: { totalScore: number } | null;
     }>;
   }>;
+  courseId?: string;
 }
 
-export function StudentManager({ initialStudents }: StudentManagerProps) {
+export function StudentManager({ initialStudents, courseId }: StudentManagerProps) {
   const router = useRouter();
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -50,7 +51,7 @@ export function StudentManager({ initialStudents }: StudentManagerProps) {
     setSuccessMsg(null);
 
     try {
-      const res = await createStudentAction({ nim, name, classGroup: classGroup || undefined });
+      const res = await createStudentAction({ nim, name, classGroup: classGroup || undefined }, courseId);
       if (res.success) {
         setSuccessMsg(res.message);
         setNim("");
@@ -75,7 +76,7 @@ export function StudentManager({ initialStudents }: StudentManagerProps) {
       return;
     }
 
-    const res = await deleteStudentAction(studentNim);
+    const res = await deleteStudentAction(studentNim, courseId);
     if (res.success) {
       router.refresh();
     } else {
@@ -190,6 +191,7 @@ export function StudentManager({ initialStudents }: StudentManagerProps) {
       {/* Modal Import Excel */}
       <ImportStudentModal
         isOpen={isImportOpen}
+        courseId={courseId}
         onClose={() => setIsImportOpen(false)}
         onSuccess={() => {
           setIsImportOpen(false);

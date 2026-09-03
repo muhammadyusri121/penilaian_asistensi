@@ -106,10 +106,11 @@ export function LoginForm() {
         </div>
       </form>
 
-      <div className="mt-6 border-t-2 border-dashed border-neutral-300 pt-4 text-center">
-        <p className="text-xs font-bold text-neutral-500 uppercase">
-          Akun Demo: <span className="font-mono text-black font-black">admin</span> / <span className="font-mono text-black font-black">admin123</span> atau <span className="font-mono text-black font-black">asprak1</span> / <span className="font-mono text-black font-black">asprak123</span>
-        </p>
+      <div className="mt-5 text-center text-xs font-bold">
+        <span className="text-neutral-600">Belum punya akun asisten? </span>
+        <a href="/register" className="underline font-black hover:text-[#FF5252]">
+          Daftar di sini (Menunggu ACC)
+        </a>
       </div>
     </div>
   );

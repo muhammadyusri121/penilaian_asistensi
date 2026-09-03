@@ -3,309 +3,238 @@
 
 | Metadata | Detail |
 | :--- | :--- |
-| **Status** | Finalized / Ready for Implementation |
-| **Versi Dokumen** | 1.0.0 |
-| **Terakhir Diperbarui** | 2026-09-02 |
+| **Status** | Updated / Ready for Implementation |
+| **Versi Dokumen** | **1.2.0 (Admin-Curated Courses & Strict Single-Assistant Enrollment)** |
+| **Terakhir Diperbarui** | 2026-09-03 |
 | **Stack Utama** | Next.js (App Router), PostgreSQL, Prisma ORM, MinIO (S3-Compatible), Tailwind CSS |
-| **Tema Desain** | Neubrutalism (Borders tebal, offset shadow, high contrast) |
+| **Tema Desain** | Neubrutalism (Border 3px hitam solid, offset shadow 4px, font monospaced angka) |
 
 ---
 
 ## 1. Ringkasan Proyek (Overview & Objective)
 
-Sistem Penilaian Asistensi adalah **aplikasi web internal khusus Asisten Praktikum (Asprak) & Koordinator Lab** untuk mengelola, menilai, mengarsipkan tugas, serta merekap nilai praktikum secara cepat dan akurat. Mahasiswa **tidak menggunakan/login** ke sistem ini.
+Sistem Penilaian Asistensi Laboratorium adalah **platform web internal terpadu** bagi Asisten Praktikum (Asprak) dan Koordinator Laboratorium (Admin) untuk menyelenggarakan, menilai, mengarsipkan tugas, dan merekap nilai praktikum secara cepat dan akurat. Mahasiswa tidak memiliki akses login ke sistem ini.
 
-Sistem ini memfasilitasi kebutuhan asprak dalam:
-1. **Manajemen Praktikan Mandiri via NIM:** Setiap asprak dapat mengimpor daftar mahasiswa binaannya (via Excel/CSV) dengan data primer berupa **NIM** dan Nama Lengkap.
-2. **Pengarsipan Berkas & Link Tugas Mahasiswa:** Asprak dapat melampirkan berkas tugas (PDF laporan, arsip kode ZIP, gambar/video) ke MinIO serta mencatat tautan eksternal (GitHub repo/demo).
-3. **Penilaian Asistensi Interaktif (Combo System):** Input nilai cepat menggunakan tombol rubrik persentase instan + input desimal manual dengan kalkulasi live real-time.
-4. **Rekapitulasi Semester & Export Excel:** Mengotomatisasi perhitungan kehadiran (12x), tugas modul dinamis, pretest dinamis, UTS, UAS, dan konversi huruf mutu sesuai rumus resmi lab, serta dapat langsung diekspor ke Excel.
-
----
-
-## 2. Aktor & Peran Pengguna (Internal Roles Only)
-
-Sistem ini bersifat *closed-internal* dan hanya dapat diakses oleh:
-
-1. **Asisten Praktikum (Asprak):**
-   - Mengimpor daftar mahasiswa bimbingannya via file Excel/CSV (NIM, Nama, Kelas/Shift).
-   - Mengunggah/melampirkan berkas tugas (PDF/ZIP) dan menautkan link GitHub praktikan.
-   - Melakukan penilaian asistensi modul menggunakan sistem kombo (preset + manual).
-   - Mengisi presensi kehadiran 12 pertemuan dan nilai pretest dinamis.
-   - Menginput nilai UTS dan UAS praktikan binaannya.
-   - Mengunduh rekapitulasi nilai akhir per modul maupun semester dalam format Excel (.xlsx).
-
-2. **Koordinator / Admin Lab:**
-   - Mengelola akun dan hak akses asisten praktikum.
-   - Mengatur daftar modul praktikum aktif ($N$ modul) dan tenggat waktu.
-   - Memantau rekapitulasi nilai lintas asisten/kelas secara terpusat.
-   - Mengekspor seluruh data nilai akhir laboratorium ke format spreadsheet resmi untuk Dosen Pengampu.
+Pada Versi 1.2.0, alur operasional laboratorium disempurnakan dengan pembagian tanggung jawab yang sangat terstruktur:
+1. **Kurikulum Terpusat oleh Admin (Centralized Course & Module Setup):**
+   - Koordinator Lab (Admin) membuat Mata Kuliah Praktikum (Kode MK, Nama MK) sekaligus merumuskan modul-modul praktikumnya ($N$ modul beserta penamaannya).
+2. **Pemilihan Mata Kuliah Mandiri oleh Asprak (Course Claiming):**
+   - Asprak cukup mendaftar (di-ACC Admin), lalu memilih mata kuliah mana saja yang akan diampu pada semester aktif.
+   - Seluruh susunan modul yang telah disiapkan Admin otomatis tersedia di ruang kerja Asprak tersebut.
+3. **Pendaftaran Praktikan Binaan & Validasi Kepemilikan Tunggal (Strict Single-Assistant Rule):**
+   - Asprak mengimpor/menginput mahasiswa praktikan binaannya (misal Kelas A / Shift Senin).
+   - **Aturan Integritas:** Dalam satu mata kuliah praktikum yang sama, **seorang mahasiswa (NIM) tidak boleh diampu oleh 2 asisten berbeda**. Jika NIM sudah terdaftar di bawah asprak lain pada mata kuliah tersebut, sistem otomatis menolaknya dengan pesan informatif.
+   - Mahasiswa yang sama tetap diperbolehkan mengambil mata kuliah praktikum lain dengan asisten yang berbeda.
+4. **Jendela Waktu Input (Windowing & Locking):**
+   - Pembatasan periode pembuatan/input mata kuliah oleh Admin (`courseInputStart` s.d. `courseInputEnd`).
+   - Pembatasan periode input/import mahasiswa praktikan oleh Asprak (`studentInputStart` s.d. `studentInputEnd`).
 
 ---
 
-## 3. Struktur & Proporsi Rubrik Penilaian
-
-Sistem penilaian dibagi menjadi dua lapisan:
-1. **Penilaian per Modul (Micro / Asistensi)**: Mengukur kualitas teknis dan laporan per pertemuan praktikum.
-2. **Penilaian Keseluruhan / Nilai Akhir (Macro / Semester)**: Mengakumulasikan seluruh aspek pembelajaran praktikum selama 1 semester.
-
----
-
-### 3.1. Penilaian Per Modul (Bobot 100 Poin per Modul)
-
-Setiap modul praktikum dinilai dengan bobot tetap berikut:
+## 2. Aktor, Peran, & Hak Akses (RBAC)
 
 ```
-[TOTAL NILAI MODUL: 100 POIN]
- ├── 1. Asistensi Code (55%)
- │    ├── Kesesuaian Tugas       : Max 22
- │    ├── Penjelasan Program      : Max 19
- │    ├── Kehadiran               : Max 8
- │    └── Sikap                   : Max 6
- ├── 2. Laporan Resmi (35%)
- │    ├── Kesesuaian Pembahasan   : Max 12
- │    ├── Kesesuaian Format       : Max 10.5
- │    ├── Plagiarisme             : Max 9
- │    └── Kerapian                : Max 3.5
- └── 3. Ketepatan Pengumpulan (10%)
-      └── Pengumpulan Tepat Waktu : Max 10
+[SISTEM PENILAIAN ASISTENSI]
+ ├── 1. Koordinator / Admin Laboratorium (ADMIN)
+ │    ├── Mengatur Periode Semester & Jadwal Buka/Tutup Input
+ │    ├── Menyetujui / Menolak (ACC) Pendaftaran Akun Asprak
+ │    ├── Membuat Mata Kuliah Praktikum, Jumlah Modul, dan Nama-nama Modulnya
+ │    ├── Memantau rekapitulasi nilai seluruh mata kuliah & asisten
+ │    └── Ekspor nilai resmi semester ke Excel untuk Dosen Pengampu
+ └── 2. Asisten Praktikum (ASISTEN)
+      ├── Mendaftar akun (berstatus PENDING sampai di-ACC Admin)
+      ├── Memilih / Mengambil Mata Kuliah Praktikum yang tersedia untuk diampu
+      ├── Mengimpor daftar mahasiswa binaan (hanya selama periode input mahasiswa)
+      │    └── Validasi: 1 NIM hanya boleh diampu 1 Asprak dalam 1 MK
+      ├── Menilai asistensi modul (Combo Rubrik)
+      ├── Mengisi presensi pertemuan, pretest, dan nilai UTS/UAS
+      └── Mengunduh rekapitulasi nilai mahasiswa binaannya ke Excel
 ```
 
-### Tabel Rincian Kriteria & Poin Maksimal
+### Matriks Peran & Izin (Access Control Matrix)
 
-| Kategori | Kriteria Penilaian | Bobot Maksimal | Keterangan Evaluasi |
-| :--- | :--- | :---: | :--- |
-| **Asistensi Code (55%)** | Kesesuaian Tugas | **22** | Kelengkapan fitur program sesuai spesifikasi modul. |
-| | Penjelasan Program | **19** | Penguasaan logika, pemahaman sintaks, dan alur kode. |
-| | Kehadiran | **8** | Kehadiran saat sesi asistensi sesuai jadwal. |
-| | Sikap | **6** | Etika, komunikasi, dan profesionalisme praktikan. |
-| **Laporan Resmi (35%)** | Kesesuaian Pembahasan & Hasil | **12** | Analisis hasil praktikum mendalam dan data pengujian. |
-| | Kesesuaian Format | **10.5** | Kepatuhan terhadap template laporan resmi lab. |
-| | Plagiarisme | **9** | Orisinalitas tulisan dan kode (bebas plagiasi). |
-| | Kerapian | **3.5** | Tata letak dokumen, penomoran tabel/gambar, dan kerapian. |
-| **Pengumpulan (10%)** | Ketepatan Pengumpulan | **10** | Ketepatan waktu pengumpulan berkas tugas. |
-| **TOTAL MODUL** | | **100** | |
+| Fitur / Aksi | Asisten Praktikum (ASISTEN) | Koordinator Lab (ADMIN) |
+| :--- | :---: | :---: |
+| **Registrasi Akun** | Mengajukan (Status `PENDING`) | - |
+| **ACC / Aktivasi Akun Asprak** | ❌ Tidak Berhak | ✅ Penuh (ACC / Tolak / Nonaktifkan) |
+| **Kelola Periode Akademik (Jadwal)** | 👁️ Melihat Jadwal Aktif | ✅ Penuh (Buka/Tutup Periode) |
+| **Buat Mata Kuliah & Rincian Modul** | 👁️ Melihat Daftar MK | ✅ Penuh (Buat MK & Susun Modul) |
+| **Pilih / Ambil MK untuk Diampu** | ✅ Memilih dari katalog MK aktif | ✅ Menetapkan asisten ke MK |
+| **Import Praktikan (NIM/Nama)** | ✅ Input mahasiswa binaan sendiri | ✅ Penuh (Bisa import ke asisten manapun) |
+| **Validasi NIM Ganda per MK** | 🛡️ Ditolak otomatis jika sudah diambil asprak lain | 🛡️ Ditolak otomatis (Integritas Data) |
+| **Penilaian Asistensi (Combo)** | ✅ Mahasiswa Binaan Sendiri | ✅ Seluruh Mahasiswa |
+| **Input Nilai Ujian (UTS/UAS)** | ✅ Mahasiswa Binaan Sendiri | ✅ Seluruh Mahasiswa |
+| **Export Excel Rekap Nilai** | ✅ Format Binaan Sendiri | ✅ Format Lengkap Semua Kelas/Dosen |
 
-### 3.2. Penilaian Keseluruhan Praktikum (Rekap Nilai Akhir 100%)
+---
 
-Mengacu pada lembar rekapitulasi semester laboratorium:
+## 3. Alur Kerja Sistem (Business Workflow)
 
-| Komponen | Porsi/Bobot | Mekanisme Perhitungan |
-| :--- | :---: | :--- |
-| **1. Kehadiran Praktikan** | **10%** | Diambil dari absensi **12 Pertemuan**.<br>$\text{Skor} = \left(\frac{\sum \text{Kehadiran (1..12)}}{12}\right) \times 10\%$ |
-| **2. Tugas & Laporan Modul** | **20%** | **Dinamis ($N$ Modul)**: Jumlah modul fleksibel (bisa 5, 6, 7, 8, dst. sesuai kebutuhan mata kuliah praktikum) + opsi Laporan Akhir.<br>$\text{Skor} = \left(\frac{\sum_{i=1}^{N} \text{Nilai Modul}_i}{N}\right) \times 20\%$ |
-| **3. Pretest** | **10%** | **Dinamis** (bisa 1x pretest, 2x, atau lebih). Sistem menghitung rata-ratanya.<br>$\text{Skor} = \text{Average(Pretest 1..N)} \times 10\%$ |
-| **4. Ujian Tengah Semester (UTS)** | **25%** | Nilai Murni UTS $\times 25\%$ |
-| **5. Ujian Akhir Semester (UAS)** | **35%** | Nilai Murni UAS $\times 35\%$ |
-| **TOTAL NILAI AKHIR (NA)** | **100%** | $\sum (\text{Skor } 1 + 2 + 3 + 4 + 5)$ |
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Asprak as Asisten Praktikum
+    actor Admin as Koordinator Lab (Admin)
+    participant App as Sistem Penilaian
 
-#### Contoh Perhitungan (Sesuai Ilustrasi Spreadsheet dengan $N=8$ termasuk Laporan Akhir):
-* Kehadiran 12x (100%): $100 \times 10\% = \mathbf{10}$
-* Tugas & Laporan ($N$ Modul dinamis, contoh rata-rata 99): $99 \times 20\% = \mathbf{19.8}$
-* Pretest (Pretest 1: 98, Pretest 2: 87 $\rightarrow$ Rata-rata 92.5): $92.5 \times 10\% = \mathbf{9.25}$
-* Nilai Murni UTS (97): $97 \times 25\% = \mathbf{24.25}$
-* Nilai Murni UAS (87): $87 \times 35\% = \mathbf{30.45}$
-* **Total Nilai Angka:** $10 + 19.8 + 9.25 + 24.25 + 30.45 = \mathbf{93.75}$
-* **Nilai Akhir (Huruf Mutu):** **A**
+    %% FASE 1
+    rect rgb(255, 248, 220)
+    Note over Asprak,Admin: FASE 1: Registrasi & ACC Akun Asprak
+    Asprak->>App: Mendaftar akun di /register (Username, Nama, Password)
+    App-->>Asprak: Registrasi tersimpan (Status: PENDING_APPROVAL)
+    Admin->>App: Masuk menu Admin -> ACC Akun Asprak
+    App-->>App: Status Akun menjadi ACTIVE (Asprak sekarang bisa login)
+    end
 
-#### Formula Konversi Resmi Nilai Akhir (Huruf Mutu):
-Rumus diimplementasikan persis sesuai formula spreadsheet laboratorium:
-```excel
-=IF(AI6<50,"E",IF(AND(AI6<=60),"D",IF(AND(AI6>60,AI6<=65),"C",IF(AND(AI6>65,AI6<=70),"C+",IF(AND(AI6>70,AI6<=75),"B",IF(AND(AI6>75,AI6<=80),"B+",IF(AI6>80,"A")))))))
+    %% FASE 2
+    rect rgb(230, 245, 255)
+    Note over Asprak,Admin: FASE 2: Setup Kurikulum Praktikum oleh Admin
+    Admin->>App: Buka Periode Semester (cth: Gasal 2026/2027)
+    Admin->>App: Buat Mata Kuliah (cth: "IF201 - Struktur Data")
+    Admin->>App: Tentukan Modul (cth: Modul 1: Pointer, Modul 2: Stack, ... Laporan Akhir)
+    App-->>App: Mata Kuliah & Modul tersimpan dan siap diambil Asprak
+    end
+
+    %% FASE 3
+    rect rgb(255, 235, 235)
+    Note over Asprak,Admin: FASE 3: Asprak Memilih MK & Input Mahasiswa
+    Asprak->>App: Buka Katalog MK -> Klik "Ambil Mata Kuliah Ini"
+    App-->>Asprak: Modul-modul praktikum otomatis tersedia di Dashboard Asprak
+    Asprak->>App: Import Excel Mahasiswa Binaan (NIM, Nama, Kelas/Shift)
+    alt NIM Belum Ada di MK Tersebut
+        App-->>Asprak: Mahasiswa berhasil didaftarkan di bawah asisten ini
+    else NIM Sudah Diampu Asprak Lain di MK Tersebut
+        App-->>Asprak: DITOLAK: "NIM sudah diampu oleh asisten [Nama Asprak Lain]"
+    end
+    end
+
+    %% FASE 4
+    rect rgb(235, 255, 235)
+    Note over Asprak,Admin: FASE 4: Penilaian & Rekapitulasi
+    Asprak->>App: Nilai Asistensi Modul (Combo Rubrik)
+    Asprak->>App: Isi Presensi Pertemuan & Nilai Ujian (UTS/UAS)
+    Asprak->>App: Download Rekap Nilai Mahasiswa Binaannya (.xlsx)
+    Admin->>App: Monitor nilai gabungan seluruh kelas & Export resmi untuk Dosen
+    end
 ```
 
-Tabel Konversi Rentang Skor:
-| Rentang Skor Akhir ($S$) | Huruf Mutu | Keterangan Logika Formula |
-| :---: | :---: | :--- |
-| **$S > 80$** | **A** | `IF(AI6 > 80, "A")` |
-| **$75 < S \le 80$** | **B+** | `IF(AND(AI6 > 75, AI6 <= 80), "B+")` |
-| **$70 < S \le 75$** | **B** | `IF(AND(AI6 > 70, AI6 <= 75), "B")` |
-| **$65 < S \le 70$** | **C+** | `IF(AND(AI6 > 65, AI6 <= 70), "C+")` |
-| **$60 < S \le 65$** | **C** | `IF(AND(AI6 > 60, AI6 <= 65), "C")` |
-| **$50 \le S \le 60$** | **D** | `IF(AND(AI6 <= 60), "D")` *(setelah kondisi $< 50$ dilewati)* |
-| **$S < 50$** | **E** | `IF(AI6 < 50, "E")` |
+---
+
+## 4. Aturan Validasi Kepemilikan Mahasiswa (Strict Single-Assistant Rule)
+
+Untuk mencegah tumpang-tindih penilaian dan duplikasi nilai mahasiswa:
+
+1. **Aturan Utama:**
+   * Di dalam **satu Mata Kuliah Praktikum yang sama**, seorang mahasiswa (NIM) **hanya boleh dibimbing oleh 1 Asisten Praktikum**.
+2. **Pencegahan di Sisi Aplikasi (Server Action):**
+   * Saat proses *Import Excel* atau *Tambah Mahasiswa*:
+     Sistem memeriksa tabel `CourseEnrollment`:
+     ```typescript
+     const existingEnrollment = await prisma.courseEnrollment.findUnique({
+       where: { courseId_studentNim: { courseId, studentNim } },
+       include: { assistant: { select: { name: true } } }
+     });
+
+     if (existingEnrollment) {
+       if (existingEnrollment.assistantId !== session.userId && session.role !== "ADMIN") {
+         // DITOLAK: Laporkan nama asisten yang sudah mengampu
+         return {
+           success: false,
+           message: `Praktikan ${studentNim} sudah terdaftar di mata kuliah ini di bawah bimbingan asisten ${existingEnrollment.assistant?.name}. Mahasiswa tidak boleh diampu oleh 2 asisten berbeda.`
+         };
+       }
+     }
+     ```
+3. **Garansi Integritas di Sisi Basis Data (Unique Constraint):**
+   * Tabel `CourseEnrollment` menerapkan compound unique constraint:
+     ```prisma
+     @@unique([courseId, studentNim])
+     ```
+   * Menjamin secara matematis di level database PostgreSQL bahwa tidak akan pernah ada dua baris enrollment untuk NIM dan Course yang sama.
+4. **Layanan Lintas Mata Kuliah:**
+   * Mahasiswa dengan NIM yang sama **boleh** mengambil mata kuliah praktikum lain dengan asisten yang berbeda (misal: di MK *Struktur Data* dibimbing Asprak A, dan di MK *Basis Data* dibimbing Asprak B).
 
 ---
 
-### 3.3. Fitur Export Rekap Nilai Excel (.xlsx)
+## 5. Struktur Rubrik Penilaian (Tetap Sesuai Formula Resmi)
 
-Asprak dan Admin dapat mengunduh rekapitulasi penilaian dalam format file spreadsheet `.xlsx` siap pakai:
-1. **Export Rekap Semester:** Mencakup seluruh kolom persis seperti lembar penilaian laboratorium (NIM, Nama, 12 Kehadiran + Total 10%, $N$ Modul + Laporan Akhir + Rata-rata 20%, Pretest Dinamis 10%, Nilai Murni UTS 25%, Nilai Murni UAS 35%, Total Nilai Angka, dan Nilai Akhir Huruf Mutu).
-2. **Export Rekap per Modul:** Menampilkan detail 4 sub-kriteria Asistensi Code (55%), 4 sub-kriteria Laporan (35%), dan Pengumpulan (10%) per mahasiswa.
+Masing-masing modul praktikum dinilai menggunakan formula standar laboratorium:
 
----
+### 5.1. Penilaian Per Modul (100 Poin Maksimal)
+* **1. Asistensi Code (55%)**:
+  - Kesesuaian Fitur Tugas: **22 poin**
+  - Penjelasan & Penguasaan Program: **19 poin**
+  - Kehadiran Asistensi: **8 poin**
+  - Sikap & Komunikasi: **6 poin**
+* **2. Laporan Resmi (35%)**:
+  - Pembahasan & Analisis Hasil: **12 poin**
+  - Kepatuhan Format Laporan: **10.5 poin**
+  - Plagiarisme & Orisinalitas: **9 poin**
+  - Kerapian Dokumen: **3.5 poin**
+* **3. Ketepatan Pengumpulan (10%)**:
+  - Waktu Pengumpulan: **10 poin**
 
-## 4. Mekanisme Input Nilai: "Combo System"
+### 5.2. Akumulasi Semester (Rekapitulasi 100%)
+$$\text{Nilai Akhir} = (10\% \times \text{Kehadiran 12x}) + (20\% \times \text{Rata-rata Mod } N) + (10\% \times \text{Pretest}) + (25\% \times \text{UTS}) + (35\% \times \text{UAS})$$
 
-Untuk efisiensi asisten lab saat menilai puluhan mahasiswa sekaligus:
-
-1. **Preset Rubric Buttons (Tombol Cepat):**
-   Setiap kriteria memiliki tombol persentase instan yang langsung mengisikan nilai pecahan/bulat:
-   - **Sempurna (100%):** Mengisi nilai maksimal kriteria.
-   - **Baik (80%):** Mengisi 80% dari nilai maksimal.
-   - **Cukup (60%):** Mengisi 60% dari nilai maksimal.
-   - **Kurang (40%):** Mengisi 40% dari nilai maksimal.
-   - **Sangat Buruk (20%):** Mengisi 20% dari nilai maksimal.
-2. **Manual Input Field (Number/Decimal):**
-   - Kolom angka tetap dapat diketik bebas (mendukung pecahan desimal seperti `10.5` atau `3.5`).
-3. **Live Auto-Calculation:**
-   - Subtotal Asistensi Code (max 55), Subtotal Laporan (max 35), dan Total Skor (max 100) dikalkulasi secara reaktif di sisi klien tanpa jeda.
-4. **Catatan Evaluasi / Feedback:**
-   - Field catatan teks untuk asisten memberikan poin koreksi detail.
-
----
-
-## 5. Spesifikasi Pengumpulan Tugas & Object Storage
-
-### 5.1. Format yang Didukung
-* **File Upload (MinIO / S3):**
-  - Dokumen: `.pdf` (Laporan Resmi)
-  - Arsip Kode: `.zip`, `.tar.gz`, `.rar`
-  - Media & Bukti: `.png`, `.jpg`, `.jpeg`, `.mp4`, `.webm`
-* **External Links:**
-  - Git Repository: GitHub / GitLab URL
-  - Media Cloud / Video Demo: YouTube, Google Drive, Loom URL
-
-### 5.2. Arsitektur Object Storage
-* **Fase Development:** MinIO server lokal (berjalan di container Docker atau binary lokal).
-* **Driver Integrasi:** Menggunakan `@aws-sdk/client-s3` dengan konfigurasi *S3-compatible endpoint*.
-* **Strategi Upload:**
-  - Presigned URL untuk upload langsung yang aman dan hemat beban server aplikasi Next.js, atau Next.js Route Handler sebagai proxy upload terkontrol.
-* **Kesiapan Produksi:** Migrasi ke Cloudflare R2 / AWS S3 hanya memerlukan pergantian environment variables (`S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET_NAME`) tanpa mengubah kode aplikasi.
-
-### 5.3. Fitur Bulk Import Data Praktikan (Excel/CSV)
-* Asprak dapat mengunggah file `.xlsx` / `.csv` daftar praktikan binaannya.
-* Kolom yang diekstrak:
-  - `NIM` (Wajib, primary key unik)
-  - `Nama Lengkap` (Wajib)
-  - `Kelas / Shift` (Opsional, misal "Kelas B" atau "Shift 1")
-* Menggunakan mekanisme *Upsert*: Data mahasiswa yang sudah ada akan diperbarui namanya/kelasnya tanpa menghapus riwayat nilai yang sudah diinput sebelumnya.
-* Otomatis terhubung dengan akun Asprak yang sedang login (`assistantId`).
+Konversi Nilai Akhir menjadi Huruf Mutu resmi:
+$$> 80 \rightarrow \mathbf{A} \quad|\quad (75, 80] \rightarrow \mathbf{B+} \quad|\quad (70, 75] \rightarrow \mathbf{B} \quad|\quad (65, 70] \rightarrow \mathbf{C+} \quad|\quad (60, 65] \rightarrow \mathbf{C} \quad|\quad [50, 60] \rightarrow \mathbf{D} \quad|\quad < 50 \rightarrow \mathbf{E}$$
 
 ---
 
 ## 6. Desain Antarmuka: Neubrutalism
 
-Mengikuti spesifikasi [design.md](./design.md):
-* **Borders & Shadows:** Border hitam solid `3px solid #000000` dengan hard offset drop shadow `4px 4px 0 #000000`.
-* **Palet Warna:**
-  - Primary Surface: Kuning Cerah `#FFEB3B`
-  - Accent / Danger / Bad Score: Merah `#FF5252`
-  - Supporting / Info / Action: Biru `#2196F3`
-  - Canvas / Background: Off-white / Muted light
-  - Text & Outlines: Hitam Netral `#000000`
-* **Tipografi:**
-  - Antarmuka & Judul: Sans-serif (Bold, punchy)
-  - Skor, Angka, & NIM: Monospace (`JetBrains Mono` / monospace stack) untuk presisi ala spreadsheet teknis.
+Mengikuti token desain di [design.md](./design.md):
+* **Borders & Shadows:** Border solid `3px solid #000000` dengan drop shadow tegas `4px 4px 0 #000000`.
+* **Katalog Mata Kuliah untuk Asprak:**
+  - Menampilkan kartu-kartu mata kuliah yang dibuat Admin.
+  - Jika Asprak sudah mengambil MK tersebut $\rightarrow$ Badge hijau `SEDANG DIAMPU` + tombol `Buka Ruang Kerja`.
+  - Jika belum diambil $\rightarrow$ Tombol biru `+ Ambil Mata Kuliah Ini`.
+* **Admin Course Builder:**
+  - Form pembuatan mata kuliah: Kode MK, Nama MK.
+  - Dynamic Form Repeater: Tambah baris modul (Judul Modul, Checkbox Laporan Akhir, Drag/reorder urutan).
 
 ---
 
-## 7. Arsitektur Folder Modular (Feature-Based Architecture)
-
-Untuk menjamin kemudahan pemeliharaan (*maintainability*), skalabilitas, dan keterpisahan tanggung jawab (*separation of concerns*), proyek disusun menggunakan pendekatan **Feature-First**:
+## 7. Arsitektur Folder Fitur (Feature-First)
 
 ```
 penilaian_asistensi/
-├── app/                              # Next.js App Router (Routing, Layout, Page)
-│   ├── (auth)/                       # Route group untuk login / logout
-│   │   └── login/
-│   ├── (dashboard)/                  # Route group terproteksi
-│   │   ├── layout.tsx                # Shell navigasi neubrutalist (sidebar/topbar)
-│   │   ├── page.tsx                  # Dashboard overview sesuai role
-│   │   ├── modul/                    # Manajemen & pengumpulan modul
-│   │   ├── penilaian/                # Workspace penilaian asistensi combo
-│   │   ├── kehadiran/                # Rekap absensi 12 pertemuan
-│   │   ├── pretest/                  # Manajemen & penilaian pretest dinamis
-│   │   └── rekap-nilai/              # Rekapitulasi nilai akhir semester & export
-│   └── api/                          # Route handlers (jika diperlukan webhook/upload)
-├── features/                         # DOMAIN LOGIC (Terisolasi per Fitur)
-│   ├── auth/                         # Autentikasi & session guard
-│   │   ├── actions/                  # Server Actions (login, logout)
-│   │   ├── components/               # LoginForm, RoleGuard
-│   │   ├── schemas/                  # Zod auth validation
-│   │   └── types/
-│   ├── modules/                      # Fitur Modul Praktikum
-│   │   ├── actions/
-│   │   ├── components/
-│   │   └── schemas/
-│   ├── students/                     # Manajemen Praktikan & Import Excel
-│   │   ├── actions/                  # Import, upsert, list praktikan binaan
-│   │   ├── components/               # ImportStudentModal, StudentTable
-│   │   └── schemas/                  # Zod validation NIM & data mahasiswa
-│   ├── submissions/                  # Fitur Upload Tugas & Storage
-│   │   ├── actions/
-│   │   ├── components/               # FileUploader, SubmissionViewer
-│   │   └── services/                 # S3 / MinIO Presigned URL handler
-│   ├── grading/                      # Fitur Penilaian Combo Asistensi
-│   │   ├── actions/                  # Save grade, bulk evaluate
-│   │   ├── components/               # RubricPresetButtons, ComboScoreForm, GradeSummaryTable
-│   │   ├── utils/                    # Formula hitung modul (murni & unit-testable)
-│   │   └── schemas/                  # Validasi skor batas atas/bawah
-│   ├── attendance/                   # Fitur Kehadiran 12x
-│   ├── pretests/                     # Fitur Pretest Dinamis
-│   └── final-grades/                 # Fitur Rekapitulasi Akhir
-│       ├── utils/                    # calculateGradeLetter() & formula semester
-│       └── components/               # SpreadsheetTableView, ExportExcelButton
-├── components/                       # Shared UI Primitives (Neubrutalism Kit)
-│   └── ui/                           # Button, Input, Modal, Badge, Card, Table
-├── lib/                              # Shared Utilities & Clients
-│   ├── prisma.ts                     # Prisma client singleton (connection pooling)
-│   ├── s3.ts                         # S3 / MinIO Client singleton (`server-only`)
-│   └── security.ts                   # Token signing, sanitization helpers
-└── prisma/
-    └── schema.prisma                 # Skema basis data deklaratif
+├── app/
+│   ├── (auth)/
+│   │   ├── login/page.tsx               # Login Asprak & Admin
+│   │   └── register/page.tsx            # Registrasi Calon Asprak (Pending Approval)
+│   ├── (dashboard)/
+│   │   ├── layout.tsx                   # Layout Shell, Navbar, Role Badge
+│   │   ├── admin/                       # Panel Khusus Admin Lab
+│   │   │   ├── periode/page.tsx         # Kelola Tanggal Buka/Tutup Periode
+│   │   │   ├── persetujuan-akun/page.tsx# Antrean ACC Akun Asprak
+│   │   │   └── matakuliah/              # Master Kurikulum MK & Modul
+│   │   │       ├── page.tsx             # List Seluruh MK & Modul Lab
+│   │   │       └── baru/page.tsx        # Builder MK & Modul Dinamis
+│   │   ├── praktikum/                   # Halaman Asprak
+│   │   │   ├── page.tsx                 # Katalog MK (Pilih MK / Buka MK yang diampu)
+│   │   ├── [courseId]/                  # Ruang Kerja Mata Kuliah Terpilih
+│   │   │   ├── modul/page.tsx           # Daftar Modul yang sudah disetup Admin
+│   │   │   ├── praktikan/page.tsx       # Import & Manajemen Mahasiswa (Validasi 1 Asprak)
+│   │   │   ├── penilaian/[modId]/page.tsx # Spreadsheet Penilaian Combo Modul
+│   │   │   └── rekap-nilai/page.tsx     # Rekap Semester & Export Excel MK terpilih
+├── features/
+│   ├── auth/                            # Login, Register, Status Akun
+│   ├── admin/                           # ACC Akun Asprak, Kelola Periode
+│   ├── courses/                         # Master MK & Modul oleh Admin, Klaim MK oleh Asprak
+│   ├── students/                        # Import Mahasiswa dengan Validasi Single-Assistant per MK
+│   ├── grading/                         # Combo Rubric Evaluation Workspace
+│   └── final-grades/                    # Formula Semester & Export Excel .xlsx
 ```
 
 ---
 
-## 8. Standar Rekayasa Keamanan (Security Engineering Standards)
+## 8. Rancangan Skema Basis Data Relasional (Prisma ORM)
 
-Keamanan adalah pilar prioritas tertinggi. Sistem menerapkan prinsip *Defense in Depth*:
-
-1. **Pencegahan Kebocoran API & Kredensial:**
-   - Semua koneksi database (`DATABASE_URL`), kredensial storage (`MINIO_SECRET_KEY`, `MINIO_ACCESS_KEY`), dan encryption key dilindungi dengan paket `import "server-only"`.
-   - Client bundle tidak akan pernah memuat secret keys atau koneksi backend secara langsung.
-
-2. **Validasi Input Ketat (Zero-Trust) via Zod:**
-   - Setiap Server Action dan Route Handler memvalidasi payload menggunakan skema Zod sebelum menyentuh logika bisnis atau basis data.
-   - Angka skor divalidasi memiliki batas bawah `0` dan batas atas sesuai bobot maksimum kriteria (misal: Kesesuaian Tugas `z.number().min(0).max(22)`).
-
-3. **Role-Based Access Control (RBAC):**
-   - Pemeriksaan otorisasi dilakukan secara ganda: di level **Middleware/Layout** (menolak navigasi) dan di level **Server Action** (menolak eksekusi mutasi).
-   - Setiap Asprak memiliki batasan akses untuk mengelola dan menilai daftar praktikan binaannya sendiri, sementara akun dengan peran `ADMIN` memiliki hak akses penuh untuk melihat, mengevaluasi, dan mengekspor seluruh data laboratorium.
-
-4. **Penyimpanan Berkas Aman (Presigned URLs & MIME Whitelist):**
-   - Berkas tugas praktikan diunggah langsung ke MinIO menggunakan URL presigned berumur pendek (TTL 5-10 menit).
-   - Sistem memvalidasi ekstensi dan tipe MIME berkas di sisi server sebelum menerbitkan URL presigned untuk mencegah eksekusi skrip berbahaya (`.exe`, `.sh`, `.php`, dsb.).
-
-5. **Pencegahan XSS, CSRF, & SQL Injection:**
-   - **XSS:** React App Router secara bawaan melakukan auto-escaping konten string. Teks feedback/catatan asisten disanitasi penuh.
-   - **CSRF:** Server Actions Next.js memiliki perlindungan CSRF bawaan dengan verifikasi origin dan header `Host`. Session cookie disimpan dengan atribut `HttpOnly`, `SameSite=Lax` (atau `Strict`), dan `Secure`.
-   - **SQL Injection:** Prisma ORM menggunakan kueri berparameter (*parameterized queries*) pada seluruh operasi ORM.
-
----
-
-## 9. Strategi Performa Tinggi & Reusabilitas Logika
-
-1. **React Server Components (RSC) First:**
-   - Data tabel rekap, daftar modul, dan submission dimuat langsung di server (RSC) tanpa putaran bolak-balik fetch jaringan browser (meniadakan waterfall request).
-2. **Kalkulasi Reaktif Murni (Pure Logic):**
-   - Logika kalkulasi nilai modul dan formula semester dibuat sebagai fungsi murni (*pure functions*) yang terisolasi di `features/grading/utils/` dan `features/final-grades/utils/`.
-   - Fungsi yang sama digunakan di sisi klien untuk *live preview* interaktif tanpa jeda, dan di sisi server untuk memvalidasi keaslian nilai sebelum disimpan ke PostgreSQL.
-3. **Optimistic UI:**
-   - Saat asisten menekan tombol rubrik combo (Sempurna, Baik, dst.), tampilan angka dan subtotal langsung merespons dalam 0 ms, memberikan kenyamanan pengalaman penggunaan setara aplikasi desktop.
-
----
-
-## 10. Skema Data Relasional & Prisma ORM
-
-ORM yang digunakan adalah **Prisma ORM** (`@prisma/client` & `prisma`). Skema dirancang agar mencakup penilaian per modul sekaligus akumulasi nilai semester (12 kehadiran, pretest dinamis, UTS, UAS, dan nilai akhir).
-
-### Rancangan `schema.prisma`:
 ```prisma
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -315,6 +244,13 @@ generator client {
 enum Role {
   ADMIN
   ASISTEN
+}
+
+enum UserStatus {
+  PENDING_APPROVAL   // Baru mendaftar, menunggu persetujuan Admin
+  ACTIVE             // Disetujui, dapat login dan beraktivitas
+  REJECTED           // Ditolak oleh Admin
+  SUSPENDED          // Dinonaktifkan sementara
 }
 
 enum SubmissionStatus {
@@ -330,50 +266,133 @@ enum FileType {
   ARCHIVE
 }
 
-// Akun Pengguna Internal (Hanya Asisten & Admin Lab)
-model User {
-  id           String       @id @default(uuid())
-  username     String       @unique // Kode Asprak / NIP
-  name         String
-  email        String?      @unique
-  passwordHash String
-  role         Role         @default(ASISTEN)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+// 1. Periode Akademik / Semester
+model AcademicPeriod {
+  id                String     @id @default(uuid())
+  name              String     // Contoh: "Semester Gasal 2026/2027"
+  isActive          Boolean    @default(false)
 
-  students     Student[]    @relation("AssistantStudents")
-  gradedItems  Grade[]      @relation("AssistantGrades")
+  // Jendela Waktu Pembuatan / Input Mata Kuliah oleh Admin
+  courseInputStart  DateTime   @default(now())
+  courseInputEnd    DateTime   @default(now())
+
+  // Jendela Waktu Input / Import Mahasiswa oleh Asprak
+  studentInputStart DateTime
+  studentInputEnd   DateTime
+
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @default(now()) @updatedAt
+
+  courses           Course[]
 }
 
-// Data Praktikan (Di-import oleh masing-masing Asprak via Excel/CSV)
+// 2. Akun Pengguna (Asprak & Admin)
+model User {
+  id               String       @id @default(uuid())
+  username         String       @unique // Kode Asprak / NIP
+  name             String
+  email            String?      @unique
+  passwordHash     String
+  role             Role         @default(ASISTEN)
+  status           UserStatus   @default(PENDING_APPROVAL) // Wajib di-ACC Admin
+  approvedAt       DateTime?
+  approvedById     String?
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @default(now()) @updatedAt
+
+  // Relasi
+  createdCourses   Course[]     @relation("CourseAdminCreator")
+  assignedCourses  CourseAssistant[]
+  gradedItems      Grade[]      @relation("AssistantGrades")
+  studentEnrollments CourseEnrollment[] @relation("AssistantEnrollments")
+}
+
+// 3. Mata Kuliah Praktikum (Dibuat oleh Admin)
+model Course {
+  id                String          @id @default(uuid())
+  academicPeriodId  String
+  code              String          // Contoh: "IF201"
+  title             String          // Contoh: "Struktur Data"
+  description       String?
+  creatorId         String          // Admin pembuat
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @default(now()) @updatedAt
+
+  academicPeriod    AcademicPeriod  @relation(fields: [academicPeriodId], references: [id], onDelete: Cascade)
+  creator           User            @relation("CourseAdminCreator", fields: [creatorId], references: [id])
+  assistants        CourseAssistant[]
+  modules           Module[]
+  enrollments       CourseEnrollment[]
+  pretests          Pretest[]
+  attendances       Attendance[]
+  finalGrades       FinalGrade[]
+}
+
+// Relasi Asprak yang mengampu Mata Kuliah Praktikum
+model CourseAssistant {
+  id          String   @id @default(uuid())
+  courseId    String
+  assistantId String
+  assignedAt  DateTime @default(now())
+
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  assistant   User     @relation(fields: [assistantId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, assistantId])
+}
+
+// 4. Modul Dinamis per Mata Kuliah (Disusun oleh Admin)
+model Module {
+  id            String       @id @default(uuid())
+  courseId      String
+  title         String       // Contoh: "Modul 1: Pointer & Struct"
+  orderIndex    Int          // Urutan modul (1, 2, 3...)
+  description   String?
+  deadline      DateTime?
+  isFinalReport Boolean      @default(false) // Apakah modul ini adalah Laporan Akhir
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @default(now()) @updatedAt
+
+  course        Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  submissions   Submission[]
+
+  @@unique([courseId, orderIndex])
+}
+
+// 5. Data Mahasiswa (Identitas Global)
 model Student {
   nim          String       @id // Primary Key: NIM Mahasiswa
-  name         String       // Nama Lengkap Praktikan
-  classGroup   String?      // Contoh: "Kelas A", "Shift Senin 08:00", "Kelompok 2"
-  assistantId  String?      // Asisten pembimbing yang mengampu
+  name         String       // Nama Lengkap
   createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  updatedAt    DateTime     @default(now()) @updatedAt
 
-  assistant    User?        @relation("AssistantStudents", fields: [assistantId], references: [id], onDelete: SetNull)
+  enrollments  CourseEnrollment[]
   submissions  Submission[]
   attendances  Attendance[]
   pretestScores PretestScore[]
-  finalGrade   FinalGrade?
+  finalGrades  FinalGrade[]
 }
 
-model Module {
-  id          String       @id @default(uuid())
-  title       String       // Contoh: "Modul 1: Pointer", "Laporan Akhir"
-  orderIndex  Int          // Urutan modul
-  description String?
-  deadline    DateTime?
-  isFinalReport Boolean    @default(false) // Menandai jika entri ini adalah Laporan Akhir
-  createdAt   DateTime     @default(now())
+// 6. Pendaftaran Mahasiswa per MK (Strict Single-Assistant Rule)
+model CourseEnrollment {
+  id           String       @id @default(uuid())
+  courseId     String
+  studentNim   String
+  assistantId  String       // Asprak tunggal yang membina mahasiswa ini di MK ini
+  classGroup   String?      // Contoh: "Kelas B / Shift 1"
+  enrolledAt   DateTime     @default(now())
 
-  submissions Submission[]
+  course       Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+  assistant    User         @relation("AssistantEnrollments", fields: [assistantId], references: [id], onDelete: Restrict)
+
+  // 1 NIM hanya boleh ada 1 kali per Course (Tidak boleh diampu 2 asprak di MK yang sama)
+  @@unique([courseId, studentNim])
 }
 
-// Data Tugas/Berkas Praktikan per Modul (Dicatat/Diarsipkan oleh Asprak)
+// 7. Data Tugas/Asistensi per Modul
 model Submission {
   id           String           @id @default(uuid())
   studentNim   String
@@ -395,7 +414,7 @@ model SubmissionFile {
   id           String     @id @default(uuid())
   submissionId String
   fileName     String
-  fileKey      String     // Path penyimpanan di MinIO / S3
+  fileKey      String
   fileUrl      String
   fileType     FileType
   fileSizeBytes Int
@@ -404,114 +423,107 @@ model SubmissionFile {
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
 
-// Lembar Penilaian Asistensi per Modul
+// 8. Lembar Penilaian Asistensi
 model Grade {
   id                    String     @id @default(uuid())
   submissionId          String     @unique
-  assistantId           String     // Asprak yang menilai
+  assistantId           String
   asistensiDate         DateTime   @default(now())
 
-  // Komponen 1: Asistensi Code (55%)
+  // Asistensi Code (55%)
   taskConformity        Float      @default(0) // Max 22
   programExplanation    Float      @default(0) // Max 19
   attendance            Float      @default(0) // Max 8
   attitude              Float      @default(0) // Max 6
 
-  // Komponen 2: Laporan Resmi (35%)
+  // Laporan Resmi (35%)
   reportDiscussion      Float      @default(0) // Max 12
   reportFormat          Float      @default(0) // Max 10.5
   plagiarism            Float      @default(0) // Max 9
   neatness              Float      @default(0) // Max 3.5
 
-  // Komponen 3: Pengumpulan (10%)
+  // Pengumpulan (10%)
   submissionPunctuality Float      @default(0) // Max 10
 
-  // Total Nilai Modul (Max 100)
-  totalScore            Float      @default(0)
+  totalScore            Float      @default(0) // Max 100
   notes                 String?
 
   createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
+  updatedAt             DateTime   @default(now()) @updatedAt
 
   submission            Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   assistant             User       @relation("AssistantGrades", fields: [assistantId], references: [id])
 }
 
-// Presensi 12 Pertemuan
+// 9. Presensi Pertemuan per Mata Kuliah
 model Attendance {
   id           String     @id @default(uuid())
+  courseId     String
   studentNim   String
   meetingNo    Int        // 1 s.d. 12
-  score        Float      @default(100) // Nilai 0 - 100
+  score        Float      @default(100)
   createdAt    DateTime   @default(now())
 
+  course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
   student      Student    @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
 
-  @@unique([studentNim, meetingNo])
+  @@unique([courseId, studentNim, meetingNo])
 }
 
-// Pretest Dinamis
+// 10. Pretest per Mata Kuliah
 model Pretest {
   id          String         @id @default(uuid())
-  title       String         // Contoh: "Pretest 1", "Pretest 2"
+  courseId    String
+  title       String         // Contoh: "Pretest Modul 1-3"
   orderIndex  Int
-  createdAt   DateTime       @default(now())
 
+  course      Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
   scores      PretestScore[]
+
+  @@unique([courseId, orderIndex])
 }
 
 model PretestScore {
   id          String   @id @default(uuid())
   pretestId   String
   studentNim  String
-  score       Float    @default(0) // 0 - 100
-  createdAt   DateTime @default(now())
+  score       Float    @default(0)
 
-  pretest     Pretest  @relation(fields: [pretestId], references: [id], onDelete: Cascade)
   student     Student  @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+  pretest     Pretest  @relation(fields: [pretestId], references: [id], onDelete: Cascade)
 
-  @@unique([studentNim, pretestId])
+  @@unique([pretestId, studentNim])
 }
 
-// Rekapitulasi Nilai Akhir Semester Praktikan
+// 11. Rekap Nilai Akhir Semester per Mata Kuliah
 model FinalGrade {
-  id                 String   @id @default(uuid())
-  studentNim         String   @unique
+  id           String     @id @default(uuid())
+  courseId     String
+  studentNim   String
+  utsScore     Float      @default(0) // Nilai Murni UTS (0 - 100)
+  uasScore     Float      @default(0) // Nilai Murni UAS (0 - 100)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @default(now()) @updatedAt
 
-  attendanceScore    Float    @default(0) // Rata-rata kehadiran (10%)
-  assignmentsScore   Float    @default(0) // Rata-rata modul 1..N + Lap Akhir (20%)
-  pretestScore       Float    @default(0) // Rata-rata pretest dinamis (10%)
-  utsScore           Float    @default(0) // Nilai Murni UTS (25%)
-  uasScore           Float    @default(0) // Nilai Murni UAS (35%)
+  course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student      Student    @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
 
-  totalScore         Float    @default(0) // Total Angka 0 - 100
-  gradeLetter        String?  // 'A', 'B+', 'B', 'C+', 'C', 'D', 'E'
-
-  updatedAt          DateTime @updatedAt
-
-  student            Student  @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+  @@unique([courseId, studentNim])
 }
 ```
 
 ---
 
-## 11. Catatan Keputusan & Diskusi Terbuka (Open Items)
+## 9. Rencana Implementasi
 
-Dokumen ini akan terus diperbarui seiring berjalannya diskusi:
-
-- [x] Porsi dan kriteria penilaian fix per modul (55% Asistensi Code, 35% Laporan Resmi, 10% Pengumpulan).
-- [x] Sistem input nilai kombo (tombol rubrik preset + input angka manual desimal).
-- [x] Porsi penilaian akhir semester (10% Kehadiran 12x, 20% Tugas & Modul Dinamis $N$ modul + opsi Laporan Akhir, 10% Pretest Dinamis, 25% UTS, 35% UAS -> Total 100% & Konversi Nilai Huruf).
-- [x] **Lingkup Pengguna:** Aplikasi tertutup khusus internal Asprak & Admin (mahasiswa tidak login). Data praktikan di-import per asprak via Excel/CSV dengan primary key **NIM**.
-- [x] Target infrastruktur dev: Next.js + PostgreSQL Local + MinIO Object Storage.
-- [x] Dukungan format submission: File (PDF, Video, Gambar, ZIP) dan Link (GitHub, Demo URL).
-- [x] **Pemilihan ORM:** **Prisma ORM** (Model `schema.prisma` type-safe, migrasi deklaratif).
-- [x] **Standar Arsitektur & Keamanan:** Feature-First directory, Zero-Trust Zod validation, `server-only` secrets, Presigned S3 URLs, RBAC ganda, dan Pure Logic calculation.
-- [x] **Metode Autentikasi:** **Opsi A** (Custom Auth ultra-ringan & cepat berbasis `jose` JWT + `bcryptjs` disimpan di `HttpOnly`, `SameSite=Lax`, `Secure` cookies).
-- [x] **Lingkungan Lokal:** Native Service / Non-Docker (PostgreSQL lokal native + MinIO lokal binary/service terhubung melalui `.env`).
-
----
-
-## 12. Kesiapan Eksekusi (Ready for Implementation)
-
-Seluruh spesifikasi arsitektur, kebutuhan fungsional, formula matematis, standar keamanan, dan skema basis data telah **disetujui sepenuhnya (100% Locked & Agreed)**. Proyek siap dieksekusi saat ada aba-aba dari pengguna.
+1. **Sinkronisasi Skema Database (v1.2.0)**
+   - Perbarui `prisma/schema.prisma` dan lakukan `npx prisma db push --force-reset` + `npx prisma generate`.
+2. **Setup Kurikulum & Periode oleh Admin**
+   - Admin Panel: Buat Mata Kuliah Praktikum beserta Modul 1..$N$.
+   - Admin Panel: Set tanggal buka/tutup periode input mahasiswa.
+   - Admin Panel: ACC akun asisten yang mendaftar.
+3. **Katalog Praktikum & Klaim MK oleh Asprak**
+   - Halaman `/praktikum` bagi Asprak untuk melihat dan mengambil mata kuliah yang dibuka Admin.
+   - Dashboard ruang kerja scoped per mata kuliah (`/[courseId]/...`).
+4. **Import Mahasiswa dengan Validasi Single-Assistant per MK**
+   - Import Excel mahasiswa yang otomatis memeriksa apakah NIM sudah diampu oleh asisten lain di MK tersebut. Jika sudah, tampilkan peringatan nama asisten yang mengampu dan lewati baris tersebut.

@@ -11,6 +11,13 @@ enum Role {
   ASISTEN
 }
 
+enum UserStatus {
+  PENDING_APPROVAL   // Baru mendaftar, menunggu persetujuan Admin
+  ACTIVE             // Disetujui, dapat login dan beraktivitas
+  REJECTED           // Ditolak oleh Admin
+  SUSPENDED          // Dinonaktifkan sementara
+}
+
 enum SubmissionStatus {
   NOT_SUBMITTED
   SUBMITTED
@@ -24,50 +31,133 @@ enum FileType {
   ARCHIVE
 }
 
-// Akun Pengguna Internal (Hanya Asisten & Admin Lab)
-model User {
-  id           String       @id @default(uuid())
-  username     String       @unique // Kode Asprak / NIP
-  name         String
-  email        String?      @unique
-  passwordHash String
-  role         Role         @default(ASISTEN)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+// 1. Periode Akademik / Semester
+model AcademicPeriod {
+  id                String     @id @default(uuid())
+  name              String     // Contoh: "Semester Gasal 2026/2027"
+  isActive          Boolean    @default(false)
 
-  students     Student[]    @relation("AssistantStudents")
-  gradedItems  Grade[]      @relation("AssistantGrades")
+  // Jendela Waktu Pembuatan / Input Mata Kuliah oleh Admin
+  courseInputStart  DateTime   @default(now())
+  courseInputEnd    DateTime   @default(now())
+
+  // Jendela Waktu Input / Import Mahasiswa oleh Asprak
+  studentInputStart DateTime
+  studentInputEnd   DateTime
+
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @default(now()) @updatedAt
+
+  courses           Course[]
 }
 
-// Data Praktikan (Di-import oleh masing-masing Asprak via Excel/CSV)
+// 2. Akun Pengguna (Asprak & Admin)
+model User {
+  id               String       @id @default(uuid())
+  username         String       @unique // Kode Asprak / NIP
+  name             String
+  email            String?      @unique
+  passwordHash     String
+  role             Role         @default(ASISTEN)
+  status           UserStatus   @default(PENDING_APPROVAL) // Wajib di-ACC Admin
+  approvedAt       DateTime?
+  approvedById     String?
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @default(now()) @updatedAt
+
+  // Relasi
+  createdCourses   Course[]     @relation("CourseAdminCreator")
+  assignedCourses  CourseAssistant[]
+  gradedItems      Grade[]      @relation("AssistantGrades")
+  studentEnrollments CourseEnrollment[] @relation("AssistantEnrollments")
+}
+
+// 3. Mata Kuliah Praktikum (Dibuat & Dikelola oleh Admin)
+model Course {
+  id                String          @id @default(uuid())
+  academicPeriodId  String
+  code              String          // Contoh: "IF201"
+  title             String          // Contoh: "Struktur Data"
+  description       String?
+  creatorId         String          // Admin pembuat
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @default(now()) @updatedAt
+
+  academicPeriod    AcademicPeriod  @relation(fields: [academicPeriodId], references: [id], onDelete: Cascade)
+  creator           User            @relation("CourseAdminCreator", fields: [creatorId], references: [id])
+  assistants        CourseAssistant[]
+  modules           Module[]
+  enrollments       CourseEnrollment[]
+  pretests          Pretest[]
+  attendances       Attendance[]
+  finalGrades       FinalGrade[]
+}
+
+// Relasi Asisten yang mengampu Mata Kuliah Praktikum
+model CourseAssistant {
+  id          String   @id @default(uuid())
+  courseId    String
+  assistantId String
+  assignedAt  DateTime @default(now())
+
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  assistant   User     @relation(fields: [assistantId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, assistantId])
+}
+
+// 4. Modul Dinamis per Mata Kuliah (Disusun oleh Admin)
+model Module {
+  id            String       @id @default(uuid())
+  courseId      String
+  title         String       // Contoh: "Modul 1: Pointer & Struct"
+  orderIndex    Int          // Urutan modul (1, 2, 3...)
+  description   String?
+  deadline      DateTime?
+  isFinalReport Boolean      @default(false) // Apakah modul ini adalah Laporan Akhir
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @default(now()) @updatedAt
+
+  course        Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  submissions   Submission[]
+
+  @@unique([courseId, orderIndex])
+}
+
+// 5. Data Mahasiswa (Identitas Global)
 model Student {
   nim          String       @id // Primary Key: NIM Mahasiswa
-  name         String       // Nama Lengkap Praktikan
-  classGroup   String?      // Contoh: "Kelas A", "Shift Senin 08:00", "Kelompok 2"
-  assistantId  String?      // Asisten pembimbing yang mengampu
+  name         String       // Nama Lengkap
   createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  updatedAt    DateTime     @default(now()) @updatedAt
 
-  assistant    User?        @relation("AssistantStudents", fields: [assistantId], references: [id], onDelete: SetNull)
+  enrollments  CourseEnrollment[]
   submissions  Submission[]
   attendances  Attendance[]
   pretestScores PretestScore[]
-  finalGrade   FinalGrade?
+  finalGrades  FinalGrade[]
 }
 
-model Module {
-  id            String       @id @default(uuid())
-  title         String       // Contoh: "Modul 1: Pointer", "Laporan Akhir"
-  orderIndex    Int          // Urutan modul
-  description   String?
-  deadline      DateTime?
-  isFinalReport Boolean      @default(false) // Menandai jika entri ini adalah Laporan Akhir
-  createdAt     DateTime     @default(now())
+// 6. Pendaftaran Mahasiswa per MK (Strict Single-Assistant Rule)
+model CourseEnrollment {
+  id           String       @id @default(uuid())
+  courseId     String
+  studentNim   String
+  assistantId  String       // Asprak tunggal yang membina mahasiswa ini di MK ini
+  classGroup   String?      // Contoh: "Kelas B / Shift 1"
+  enrolledAt   DateTime     @default(now())
 
-  submissions   Submission[]
+  course       Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+  assistant    User         @relation("AssistantEnrollments", fields: [assistantId], references: [id], onDelete: Restrict)
+
+  // 1 NIM hanya boleh ada 1 kali per Course (Tidak boleh diampu 2 asprak di MK yang sama)
+  @@unique([courseId, studentNim])
 }
 
-// Data Tugas/Berkas Praktikan per Modul (Dicatat/Diarsipkan oleh Asprak)
+// 7. Data Tugas/Asistensi per Modul
 model Submission {
   id           String           @id @default(uuid())
   studentNim   String
@@ -98,90 +188,90 @@ model SubmissionFile {
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
 
-// Lembar Penilaian Asistensi per Modul
+// 8. Lembar Penilaian Asistensi per Modul
 model Grade {
   id                    String     @id @default(uuid())
   submissionId          String     @unique
-  assistantId           String     // Asprak yang menilai
+  assistantId           String
   asistensiDate         DateTime   @default(now())
 
-  // Komponen 1: Asistensi Code (55%)
+  // Asistensi Code (55%)
   taskConformity        Float      @default(0) // Max 22
   programExplanation    Float      @default(0) // Max 19
   attendance            Float      @default(0) // Max 8
   attitude              Float      @default(0) // Max 6
 
-  // Komponen 2: Laporan Resmi (35%)
+  // Laporan Resmi (35%)
   reportDiscussion      Float      @default(0) // Max 12
   reportFormat          Float      @default(0) // Max 10.5
   plagiarism            Float      @default(0) // Max 9
   neatness              Float      @default(0) // Max 3.5
 
-  // Komponen 3: Pengumpulan (10%)
+  // Pengumpulan (10%)
   submissionPunctuality Float      @default(0) // Max 10
 
-  // Total Nilai Modul (Max 100)
-  totalScore            Float      @default(0)
+  totalScore            Float      @default(0) // Max 100
   notes                 String?
 
   createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
+  updatedAt             DateTime   @default(now()) @updatedAt
 
   submission            Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   assistant             User       @relation("AssistantGrades", fields: [assistantId], references: [id])
 }
 
-// Presensi 12 Pertemuan
+// 9. Presensi Pertemuan per Mata Kuliah
 model Attendance {
   id           String     @id @default(uuid())
+  courseId     String
   studentNim   String
   meetingNo    Int        // 1 s.d. 12
-  score        Float      @default(100) // Nilai 0 - 100
+  score        Float      @default(100)
   createdAt    DateTime   @default(now())
 
+  course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
   student      Student    @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
 
-  @@unique([studentNim, meetingNo])
+  @@unique([courseId, studentNim, meetingNo])
 }
 
-// Pretest Dinamis
+// 10. Pretest per Mata Kuliah
 model Pretest {
   id          String         @id @default(uuid())
-  title       String         // Contoh: "Pretest 1", "Pretest 2"
+  courseId    String
+  title       String         // Contoh: "Pretest Modul 1-3"
   orderIndex  Int
-  createdAt   DateTime       @default(now())
 
+  course      Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
   scores      PretestScore[]
+
+  @@unique([courseId, orderIndex])
 }
 
 model PretestScore {
   id          String   @id @default(uuid())
   pretestId   String
   studentNim  String
-  score       Float    @default(0) // 0 - 100
-  createdAt   DateTime @default(now())
+  score       Float    @default(0)
 
-  pretest     Pretest  @relation(fields: [pretestId], references: [id], onDelete: Cascade)
   student     Student  @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+  pretest     Pretest  @relation(fields: [pretestId], references: [id], onDelete: Cascade)
 
-  @@unique([studentNim, pretestId])
+  @@unique([pretestId, studentNim])
 }
 
-// Rekapitulasi Nilai Akhir Semester Praktikan
+// 11. Rekap Nilai Akhir Semester per Mata Kuliah
 model FinalGrade {
-  id                 String   @id @default(uuid())
-  studentNim         String   @unique
+  id           String     @id @default(uuid())
+  courseId     String
+  studentNim   String
+  utsScore     Float      @default(0) // Nilai Murni UTS (0 - 100)
+  uasScore     Float      @default(0) // Nilai Murni UAS (0 - 100)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @default(now()) @updatedAt
 
-  attendanceScore    Float    @default(0) // Rata-rata kehadiran (10%)
-  assignmentsScore   Float    @default(0) // Rata-rata modul 1..N + Lap Akhir (20%)
-  pretestScore       Float    @default(0) // Rata-rata pretest dinamis (10%)
-  utsScore           Float    @default(0) // Nilai Murni UTS (25%)
-  uasScore           Float    @default(0) // Nilai Murni UAS (35%)
+  course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student      Student    @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
 
-  totalScore         Float    @default(0) // Total Angka 0 - 100
-  gradeLetter        String?  // 'A', 'B+', 'B', 'C+', 'C', 'D', 'E'
-
-  updatedAt          DateTime @updatedAt
-
-  student            Student  @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+  @@unique([courseId, studentNim])
 }

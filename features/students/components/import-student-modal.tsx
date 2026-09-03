@@ -11,6 +11,7 @@ interface ImportStudentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  courseId?: string;
 }
 
 interface ParsedStudentRow {
@@ -19,7 +20,7 @@ interface ParsedStudentRow {
   classGroup?: string;
 }
 
-export function ImportStudentModal({ isOpen, onClose, onSuccess }: ImportStudentModalProps) {
+export function ImportStudentModal({ isOpen, onClose, onSuccess, courseId }: ImportStudentModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [parsedRows, setParsedRows] = useState<ParsedStudentRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -38,7 +39,7 @@ export function ImportStudentModal({ isOpen, onClose, onSuccess }: ImportStudent
       try {
         readerRef.current.abort();
       } catch {
-        // ignore
+        // Abaikan
       }
     }
 
@@ -54,6 +55,11 @@ export function ImportStudentModal({ isOpen, onClose, onSuccess }: ImportStudent
     const reader = new FileReader();
     readerRef.current = reader;
 
+    reader.onerror = () => {
+      if (selectionIdRef.current !== currentSelectionId) return;
+      setErrorMsg("Gagal membaca berkas.");
+    };
+
     reader.onload = (evt) => {
       if (selectionIdRef.current !== currentSelectionId) return;
       try {
@@ -68,11 +74,11 @@ export function ImportStudentModal({ isOpen, onClose, onSuccess }: ImportStudent
           return;
         }
 
-        // Cari header NIM, Nama, dan Kelas/Shift secara fleksibel
+        // Cari header NIM, Nama, dan Kelas/Shift secara fleksibel (id hanya sebagai standalone token)
         const mapped: ParsedStudentRow[] = [];
         for (const row of rawData) {
           const keys = Object.keys(row);
-          const nimKey = keys.find((k) => /nim|no\s*induk|id/i.test(k));
+          const nimKey = keys.find((k) => /nim|no\s*induk|\bid\b/i.test(k));
           const nameKey = keys.find((k) => /nama|name|mahasiswa/i.test(k));
           const classKey = keys.find((k) => /kelas|class|shift|kelompok/i.test(k));
 
@@ -109,7 +115,7 @@ export function ImportStudentModal({ isOpen, onClose, onSuccess }: ImportStudent
     setErrorMsg(null);
 
     try {
-      const res = await importStudentsAction(parsedRows);
+      const res = await importStudentsAction(parsedRows, courseId);
       if (res.success) {
         setSuccessMsg(res.message);
         setTimeout(() => {
