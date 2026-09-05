@@ -29,7 +29,9 @@ async function ensureScheduleColumns() {
 /**
  * Otomatis seed contoh Mata Kuliah Praktikum & Modul jika database masih kosong
  */
+let hasCheckedSeed = false;
 export async function seedInitialCourseIfEmptyAction(): Promise<void> {
+  if (hasCheckedSeed) return;
   const activePeriod = await getActivePeriodAction();
   if (!activePeriod) return;
 
@@ -110,6 +112,7 @@ export async function seedInitialCourseIfEmptyAction(): Promise<void> {
       }
     });
   }
+  hasCheckedSeed = true;
 }
 
 /**
