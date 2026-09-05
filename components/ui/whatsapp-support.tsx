@@ -8,7 +8,7 @@ interface WhatsAppSupportProps {
 }
 
 export function WhatsAppSupport({
-  phoneNumber = process.env.NEXT_PUBLIC_WA_PHONE || "6281234567890",
+  phoneNumber = process.env.NEXT_PUBLIC_WA_PHONE || "6285856800664",
   defaultMessage = "Halo Admin / Koordinator Lab, saya ingin menyampaikan pengaduan/kendala mengenai sistem penilaian asistensi praktikum.",
 }: WhatsAppSupportProps) {
   // Bersihkan karakter non-digit dari nomor WA
@@ -22,7 +22,7 @@ export function WhatsAppSupport({
       <div className="absolute right-0 bottom-full mb-2 hidden md:group-hover:block transition-all duration-150 pointer-events-none whitespace-nowrap">
         <div className="neo-box-sm bg-black text-white text-[11px] font-bold px-2.5 py-1 uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-[#25D366] animate-pulse inline-block" />
-          Pengaduan
+          Pengaduan Sistem
         </div>
       </div>
 
@@ -32,7 +32,7 @@ export function WhatsAppSupport({
         target="_blank"
         rel="noopener noreferrer"
         aria-label="Pengaduan Layanan via WhatsApp"
-        className="flex items-center gap-2 px-3.5 py-2.5 md:px-4 md:py-3 bg-[#25D366] hover:bg-[#20bd5a] text-white border-3 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-x-1 active:translate-y-1 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer select-none"
+        className="flex items-center gap-2 px-3.5 py-2.5 md:px-4 md:py-3 bg-[#25D366] hover:bg-[#20bd5a] text-white border-3 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-x-1 active:translate-y-1 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer select-none rounded-none"
       >
         {/* WhatsApp Official Vector Icon */}
         <svg
@@ -44,6 +44,9 @@ export function WhatsAppSupport({
         </svg>
 
         {/* Text Label */}
+        {/* <span className="text-xs font-black tracking-wide hidden sm:inline-block">
+          Pengaduan
+        </span> */}
       </a>
     </div>
   );
