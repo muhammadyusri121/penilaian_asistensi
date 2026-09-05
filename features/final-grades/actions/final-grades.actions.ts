@@ -31,12 +31,29 @@ export async function getSemesterSummaryAction(courseId?: string) {
 
   let targetCourseId = courseId;
   if (!targetCourseId) {
-    const firstCourse = await prisma.course.findFirst({
-      orderBy: { createdAt: "asc" },
-      select: { id: true },
-    });
-    if (firstCourse) {
-      targetCourseId = firstCourse.id;
+    if (session.role === "ADMIN") {
+      const firstCourse = await prisma.course.findFirst({
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      });
+      if (firstCourse) {
+        targetCourseId = firstCourse.id;
+      }
+    } else {
+      const myCourse = await prisma.course.findFirst({
+        where: {
+          assistants: {
+            some: {
+              assistantId: session.userId,
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      });
+      if (myCourse) {
+        targetCourseId = myCourse.id;
+      }
     }
   }
 
@@ -45,7 +62,28 @@ export async function getSemesterSummaryAction(courseId?: string) {
       modules: [],
       pretests: [],
       students: [],
+      weights: { attendance: 10, assignment: 20, pretest: 10, uts: 25, uas: 35 },
     };
+  }
+
+  // Jika bukan ADMIN, pastikan asprak terdaftar sebagai asisten di mata kuliah ini
+  if (session.role !== "ADMIN") {
+    const isAssigned = await prisma.courseAssistant.findUnique({
+      where: {
+        courseId_assistantId: {
+          courseId: targetCourseId,
+          assistantId: session.userId,
+        },
+      },
+    });
+    if (!isAssigned) {
+      return {
+        modules: [],
+        pretests: [],
+        students: [],
+        weights: { attendance: 10, assignment: 20, pretest: 10, uts: 25, uas: 35 },
+      };
+    }
   }
 
   const enrollmentWhere =
@@ -86,6 +124,39 @@ export async function getSemesterSummaryAction(courseId?: string) {
     }),
   ]);
 
+  let courseWeights = {
+    attendance: 10,
+    assignment: 20,
+    pretest: 10,
+    uts: 25,
+    uas: 35,
+  };
+
+  try {
+    const courseData = await prisma.course.findUnique({
+      where: { id: targetCourseId },
+      select: {
+        weightAttendance: true,
+        weightAssignment: true,
+        weightPretest: true,
+        weightUts: true,
+        weightUas: true,
+      },
+    });
+
+    if (courseData) {
+      courseWeights = {
+        attendance: courseData.weightAttendance ?? 10,
+        assignment: courseData.weightAssignment ?? 20,
+        pretest: courseData.weightPretest ?? 10,
+        uts: courseData.weightUts ?? 25,
+        uas: courseData.weightUas ?? 35,
+      };
+    }
+  } catch (err) {
+    console.warn("Could not query course weights, using defaults:", err);
+  }
+
   // Kalkulasi data untuk setiap mahasiswa
   const processedStudents = enrollments.map((en) => {
     const student = en.student;
@@ -121,13 +192,14 @@ export async function getSemesterSummaryAction(courseId?: string) {
     const rawUtsScore = finalGradeRecord?.utsScore ?? 0;
     const rawUasScore = finalGradeRecord?.uasScore ?? 0;
 
-    // Hitung seluruh komponen semester (0..100%)
+    // Hitung seluruh komponen semester (0..100%) dengan bobot kustom per mata kuliah
     const summary = calculateSemesterFinalGrade({
       attendances: attendanceScores,
       moduleScores,
       pretestScores: pretestScoresArray,
       utsScore: rawUtsScore,
       uasScore: rawUasScore,
+      weights: courseWeights,
     });
 
     return {
@@ -150,6 +222,7 @@ export async function getSemesterSummaryAction(courseId?: string) {
     modules,
     pretests,
     students: processedStudents,
+    weights: courseWeights,
   };
 }
 

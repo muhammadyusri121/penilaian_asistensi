@@ -7,6 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Trash2, BookOpen, Layers, CheckCircle2, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import {
+  CourseWeightsEditor,
+  CourseWeights,
+  DEFAULT_COURSE_WEIGHTS,
+} from "./course-weights-editor";
 
 interface ModuleEditRow {
   id?: string;
@@ -23,6 +28,11 @@ interface CourseEditFormProps {
     description: string | null;
     scheduleDay?: string | null;
     scheduleTime?: string | null;
+    weightAttendance?: number | null;
+    weightAssignment?: number | null;
+    weightPretest?: number | null;
+    weightUts?: number | null;
+    weightUas?: number | null;
     modules: Array<{
       id: string;
       title: string;
@@ -40,6 +50,13 @@ export function CourseEditForm({ course }: CourseEditFormProps) {
   const [description, setDescription] = useState(course.description || "");
   const [scheduleDay, setScheduleDay] = useState(course.scheduleDay || "");
   const [scheduleTime, setScheduleTime] = useState(course.scheduleTime || "");
+  const [weights, setWeights] = useState<CourseWeights>({
+    weightAttendance: course.weightAttendance ?? DEFAULT_COURSE_WEIGHTS.weightAttendance,
+    weightAssignment: course.weightAssignment ?? DEFAULT_COURSE_WEIGHTS.weightAssignment,
+    weightPretest: course.weightPretest ?? DEFAULT_COURSE_WEIGHTS.weightPretest,
+    weightUts: course.weightUts ?? DEFAULT_COURSE_WEIGHTS.weightUts,
+    weightUas: course.weightUas ?? DEFAULT_COURSE_WEIGHTS.weightUas,
+  });
   const [modules, setModules] = useState<ModuleEditRow[]>(
     course.modules.map((m) => ({
       id: m.id,
@@ -93,6 +110,20 @@ export function CourseEditForm({ course }: CourseEditFormProps) {
       }
     }
 
+    // Validasi total bobot penilaian tepat 100%
+    const totalWeights =
+      weights.weightAttendance +
+      weights.weightAssignment +
+      weights.weightPretest +
+      weights.weightUts +
+      weights.weightUas;
+
+    if (Math.abs(totalWeights - 100) > 0.01) {
+      setErrorMsg(`Total bobot persentase penilaian harus tepat 100%! Saat ini: ${totalWeights}%.`);
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await updateCourseByAdminAction(course.id, {
         code: code.trim(),
@@ -100,6 +131,11 @@ export function CourseEditForm({ course }: CourseEditFormProps) {
         description: description.trim() || undefined,
         scheduleDay: scheduleDay.trim() || undefined,
         scheduleTime: scheduleTime.trim() || undefined,
+        weightAttendance: weights.weightAttendance,
+        weightAssignment: weights.weightAssignment,
+        weightPretest: weights.weightPretest,
+        weightUts: weights.weightUts,
+        weightUas: weights.weightUas,
         modules: modules.map((m) => ({
           id: m.id,
           title: m.title.trim(),
@@ -239,13 +275,20 @@ export function CourseEditForm({ course }: CourseEditFormProps) {
             </div>
           </div>
 
-          {/* DAFTAR MODUL PRAKTIKUM */}
+          {/* 2. KUSTOMISASI BOBOT PERSENTASE PENILAIAN */}
+          <CourseWeightsEditor
+            weights={weights}
+            onChange={setWeights}
+            disabled={loading}
+          />
+
+          {/* 3. DAFTAR MODUL PRAKTIKUM */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs font-black uppercase tracking-wider text-black flex items-center gap-1.5">
                   <BookOpen className="w-4 h-4 text-[#2196F3]" />
-                  2. Susunan Modul Praktikum ({modules.length} Modul)
+                  3. Susunan Modul Praktikum ({modules.length} Modul)
                 </span>
                 <p className="text-[11px] font-medium text-neutral-600">
                   Ubah judul modul, tambahkan modul baru, atau tandai modul sebagai Laporan Akhir.

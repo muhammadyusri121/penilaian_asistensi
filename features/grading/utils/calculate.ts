@@ -76,14 +76,21 @@ export interface SemesterComponents {
   pretestScores: number[];     // Array nilai pretest (dinamis, 0-100)
   utsScore: number;            // Nilai murni UTS (0-100)
   uasScore: number;            // Nilai murni UAS (0-100)
+  weights?: {
+    attendance?: number;
+    assignment?: number;
+    pretest?: number;
+    uts?: number;
+    uas?: number;
+  };
 }
 
 export interface SemesterFinalResult {
-  attendanceScore: number;     // Kontribusi 10%
-  assignmentsScore: number;    // Kontribusi 20%
-  pretestScore: number;        // Kontribusi 10%
-  utsScore: number;            // Kontribusi 25%
-  uasScore: number;            // Kontribusi 35%
+  attendanceScore: number;     // Kontribusi Kehadiran
+  assignmentsScore: number;    // Kontribusi Tugas & Laporan
+  pretestScore: number;        // Kontribusi Pretest
+  utsScore: number;            // Kontribusi UTS
+  uasScore: number;            // Kontribusi UAS
   totalScore: number;          // Total Kumulatif 0 - 100
   gradeLetter: string;         // 'A', 'B+', 'B', 'C+', 'C', 'D', 'E'
 }
@@ -92,29 +99,35 @@ export interface SemesterFinalResult {
  * Hitung rekapitulasi nilai akhir semester praktikum (Bobot Kumulatif 100%)
  */
 export function calculateSemesterFinalGrade(data: SemesterComponents): SemesterFinalResult {
-  // 1. Kehadiran (10%): rata-rata 12 pertemuan
+  const wAtt = (data.weights?.attendance ?? 10) / 100;
+  const wAss = (data.weights?.assignment ?? 20) / 100;
+  const wPre = (data.weights?.pretest ?? 10) / 100;
+  const wUts = (data.weights?.uts ?? 25) / 100;
+  const wUas = (data.weights?.uas ?? 35) / 100;
+
+  // 1. Kehadiran: rata-rata 12 pertemuan
   const avgAttendance = data.attendances.length > 0
     ? data.attendances.reduce((acc, curr) => acc + curr, 0) / 12
     : 0;
-  const attendanceScore = Number((avgAttendance * 0.10).toFixed(2));
+  const attendanceScore = Number((avgAttendance * wAtt).toFixed(2));
 
-  // 2. Tugas & Laporan Modul (20%): rata-rata N modul dinamis
+  // 2. Tugas & Laporan Modul: rata-rata N modul dinamis
   const avgModules = data.moduleScores.length > 0
     ? data.moduleScores.reduce((acc, curr) => acc + curr, 0) / data.moduleScores.length
     : 0;
-  const assignmentsScore = Number((avgModules * 0.20).toFixed(2));
+  const assignmentsScore = Number((avgModules * wAss).toFixed(2));
 
-  // 3. Pretest (10%): rata-rata N sesi pretest dinamis
+  // 3. Pretest: rata-rata N sesi pretest dinamis
   const avgPretest = data.pretestScores.length > 0
     ? data.pretestScores.reduce((acc, curr) => acc + curr, 0) / data.pretestScores.length
     : 0;
-  const pretestScore = Number((avgPretest * 0.10).toFixed(2));
+  const pretestScore = Number((avgPretest * wPre).toFixed(2));
 
-  // 4. UTS (25%): nilai murni * 25%
-  const utsScore = Number(((data.utsScore ?? 0) * 0.25).toFixed(2));
+  // 4. UTS: nilai murni * bobot UTS
+  const utsScore = Number(((data.utsScore ?? 0) * wUts).toFixed(2));
 
-  // 5. UAS (35%): nilai murni * 35%
-  const uasScore = Number(((data.uasScore ?? 0) * 0.35).toFixed(2));
+  // 5. UAS: nilai murni * bobot UAS
+  const uasScore = Number(((data.uasScore ?? 0) * wUas).toFixed(2));
 
   // Total Nilai Angka
   const totalScore = Number(

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getCatalogCoursesAction } from "@/features/courses/actions/course.actions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { BookOpen, Plus, Users, Layers, GraduationCap, Edit3, Award } from "lucide-react";
+import { BookOpen, Plus, Users, Layers, GraduationCap, Edit3, Award, Sliders } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Master Mata Kuliah & Modul | Admin Lab",
@@ -67,10 +67,10 @@ export default async function AdminMataKuliahPage() {
                 </div>
 
                 <div className="p-4 space-y-3">
-                  {((course as any).scheduleDay || (course as any).scheduleTime) && (
+                  {(course.scheduleDay || course.scheduleTime) && (
                     <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#E0F2FE] border-2 border-black text-xs font-black text-black">
-                      <span>🗓️ {(course as any).scheduleDay || "Hari ?"}</span>
-                      {(course as any).scheduleTime && <span>• ⏰ {(course as any).scheduleTime}</span>}
+                      <span>🗓️ {course.scheduleDay || "Hari ?"}</span>
+                      {course.scheduleTime && <span>• ⏰ {course.scheduleTime}</span>}
                     </div>
                   )}
                   <h3 className="text-lg font-black tracking-tight text-black line-clamp-1">
@@ -95,8 +95,36 @@ export default async function AdminMataKuliahPage() {
                     </div>
                   </div>
 
+                    {/* Bobot Penilaian Semester */}
+                    <div className="p-2 bg-neutral-100 border border-neutral-300 space-y-1">
+                      <div className="flex items-center justify-between text-[10px] font-black uppercase text-neutral-600">
+                        <span className="flex items-center gap-1">
+                          <Sliders className="w-3 h-3 text-black" />
+                          Bobot Semester:
+                        </span>
+                        <span className="text-emerald-700 font-mono">100%</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1 text-[9px] font-bold">
+                        <span className="bg-sky-100 text-sky-900 px-1 py-0.2 border border-sky-300">
+                          Presensi {course.weightAttendance ?? 10}%
+                        </span>
+                        <span className="bg-emerald-100 text-emerald-900 px-1 py-0.2 border border-emerald-300">
+                          Tugas {course.weightAssignment ?? 20}%
+                        </span>
+                        <span className="bg-amber-100 text-amber-900 px-1 py-0.2 border border-amber-300">
+                          Pretest {course.weightPretest ?? 10}%
+                        </span>
+                        <span className="bg-orange-100 text-orange-900 px-1 py-0.2 border border-orange-300">
+                          UTS {course.weightUts ?? 25}%
+                        </span>
+                        <span className="bg-rose-100 text-rose-900 px-1 py-0.2 border border-rose-300">
+                          UAS {course.weightUas ?? 35}%
+                        </span>
+                      </div>
+                    </div>
+
                   {/* Preview Daftar Modul */}
-                  <div className="pt-2">
+                  <div className="pt-1">
                     <span className="text-[10px] font-black uppercase text-neutral-500 block mb-1">
                       Modul ({course.modules.length}):
                     </span>

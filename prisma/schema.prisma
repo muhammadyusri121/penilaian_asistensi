@@ -91,6 +91,13 @@ model Course {
   scheduleTime      String?         // Contoh: "08:00 - 10:30 WIB"
   creatorId         String          // Admin pembuat
 
+  // Bobot persentase penilaian akhir semester (Total 100%)
+  weightAttendance  Float?          @default(10)
+  weightAssignment  Float?          @default(20)
+  weightPretest     Float?          @default(10)
+  weightUts         Float?          @default(25)
+  weightUas         Float?          @default(35)
+
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @default(now()) @updatedAt
 

@@ -3,6 +3,13 @@ import * as XLSX from "xlsx";
 interface ExportSemesterData {
   modules: Array<{ id: string; title: string }>;
   pretests: Array<{ id: string; title: string }>;
+  weights?: {
+    attendance: number;
+    assignment: number;
+    pretest: number;
+    uts: number;
+    uas: number;
+  };
   students: Array<{
     student: {
       nim: string;
@@ -32,6 +39,7 @@ interface ExportSemesterData {
  */
 export function exportSemesterToExcel(data: ExportSemesterData, filename = "Rekap_Nilai_Praktikum.xlsx") {
   const hasAssistant = data.students.some((s) => s.student.assistant);
+  const w = data.weights ?? { attendance: 10, assignment: 20, pretest: 10, uts: 25, uas: 35 };
 
   const headers = [
     "No",
@@ -41,18 +49,18 @@ export function exportSemesterToExcel(data: ExportSemesterData, filename = "Reka
     ...(hasAssistant ? ["Asisten Pembina"] : []),
     // Kehadiran 1..12
     ...Array.from({ length: 12 }, (_, i) => `P${i + 1}`),
-    "Total Presensi (10%)",
+    `Total Presensi (${w.attendance}%)`,
     // Modul dinamis
     ...data.modules.map((m) => m.title),
-    "Total Modul (20%)",
+    `Total Modul (${w.assignment}%)`,
     // Pretests dinamis
     ...data.pretests.map((p) => p.title),
-    "Total Pretest (10%)",
+    `Total Pretest (${w.pretest}%)`,
     // Ujian
     "Nilai Murni UTS",
-    "Persentase UTS (25%)",
+    `Persentase UTS (${w.uts}%)`,
     "Nilai Murni UAS",
-    "Persentase UAS (35%)",
+    `Persentase UAS (${w.uas}%)`,
     // Akhir
     "TOTAL NILAI",
     "NILAI AKHIR (NA)",

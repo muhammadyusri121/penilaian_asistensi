@@ -1,31 +1,26 @@
 "use client";
 
 import React, { useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  createPeriodAction,
-  setActivePeriodAction,
-  updatePeriodDatesAction,
-  togglePeriodWindowAction,
-  updateWindowAutoCloseAction,
-} from "../actions/period.actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
+  createPeriodAction,
+  setActivePeriodAction,
+  togglePeriodWindowAction,
+  updateWindowAutoCloseAction,
+} from "../actions/period.actions";
+import { useRouter } from "next/navigation";
+import {
   Calendar,
   Clock,
-  Plus,
-  Edit3,
   Lock,
+  Plus,
   Unlock,
-  CheckCircle2,
-  AlertCircle,
-  ShieldCheck,
-  ChevronRight,
+  Sliders,
 } from "lucide-react";
 
-interface PeriodItem {
+export interface PeriodItem {
   id: string;
   name: string;
   isActive: boolean;
@@ -95,6 +90,10 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
   // Active period
   const activePeriod = periods.find((p) => p.isActive) || periods[0];
 
+  // Modal Kontrol Jendela Waktu (Pop-up saat klik "Atur")
+  const [selectedPeriodIdForWindow, setSelectedPeriodIdForWindow] = useState<string | null>(null);
+  const selectedPeriod = periods.find((p) => p.id === selectedPeriodIdForWindow) || null;
+
   // Auto-close duration presets when opening window
   const [courseOpenDays, setCourseOpenDays] = useState<number | "custom">(7);
   const [courseCustomClose, setCourseCustomClose] = useState<string>(
@@ -121,15 +120,6 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
   const [isActiveNew, setIsActiveNew] = useState(true);
   const [loadingCreate, setLoadingCreate] = useState(false);
 
-  // Edit Manual Modal
-  const [editingPeriod, setEditingPeriod] = useState<PeriodItem | null>(null);
-  const [editCourseStart, setEditCourseStart] = useState("");
-  const [editCourseEnd, setEditCourseEnd] = useState("");
-  const [editStudentStart, setEditStudentStart] = useState("");
-  const [editStudentEnd, setEditStudentEnd] = useState("");
-  const [editLoading, setEditLoading] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-
   const now = new Date();
 
   // Helper checks for active period
@@ -141,6 +131,17 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
   const isStudentOpen = activePeriod
     ? (!activePeriod.studentInputStart || now >= new Date(activePeriod.studentInputStart)) &&
       (activePeriod.studentInputEnd ? now <= new Date(activePeriod.studentInputEnd) : false)
+    : false;
+
+  // Helper checks for selected period in modal
+  const isTargetCourseOpen = selectedPeriod
+    ? (!selectedPeriod.courseInputStart || now >= new Date(selectedPeriod.courseInputStart)) &&
+      (selectedPeriod.courseInputEnd ? now <= new Date(selectedPeriod.courseInputEnd) : false)
+    : false;
+
+  const isTargetStudentOpen = selectedPeriod
+    ? (!selectedPeriod.studentInputStart || now >= new Date(selectedPeriod.studentInputStart)) &&
+      (selectedPeriod.studentInputEnd ? now <= new Date(selectedPeriod.studentInputEnd) : false)
     : false;
 
   // Toggle Window Handler (Buka / Tutup)
@@ -266,53 +267,6 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
     }
   }
 
-  // Open Edit Manual
-  function openEditModal(p: PeriodItem) {
-    setEditingPeriod(p);
-    setEditCourseStart(
-      p.courseInputStart
-        ? toLocalDatetimeInputString(new Date(p.courseInputStart))
-        : toLocalDatetimeInputString(new Date(p.studentInputStart))
-    );
-    setEditCourseEnd(
-      p.courseInputEnd
-        ? toLocalDatetimeInputString(new Date(p.courseInputEnd))
-        : toLocalDatetimeInputString(new Date(p.studentInputEnd))
-    );
-    setEditStudentStart(toLocalDatetimeInputString(new Date(p.studentInputStart)));
-    setEditStudentEnd(toLocalDatetimeInputString(new Date(p.studentInputEnd)));
-    setEditError(null);
-  }
-
-  async function handleSaveEdit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editingPeriod) return;
-
-    setEditLoading(true);
-    setEditError(null);
-
-    try {
-      const res = await updatePeriodDatesAction(editingPeriod.id, {
-        courseInputStart: new Date(editCourseStart).toISOString(),
-        courseInputEnd: new Date(editCourseEnd).toISOString(),
-        studentInputStart: new Date(editStudentStart).toISOString(),
-        studentInputEnd: new Date(editStudentEnd).toISOString(),
-      });
-
-      if (res.success) {
-        setEditingPeriod(null);
-        setFeedback({ success: true, message: res.message });
-        router.refresh();
-      } else {
-        setEditError(res.message);
-      }
-    } catch {
-      setEditError("Terjadi kendala jaringan.");
-    } finally {
-      setEditLoading(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
       {/* Feedback Toast */}
@@ -333,7 +287,7 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
         </div>
       )}
 
-      {/* Kontrol Utama Jendela Periode Aktif */}
+      {/* Kontrol Ringkasan Periode Aktif */}
       {activePeriod && (
         <div className="neo-box bg-[#FFF9F0] p-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b-2 border-dashed border-neutral-300 pb-3">
@@ -353,10 +307,10 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
                 variant="secondary"
                 size="sm"
                 className="text-xs"
-                onClick={() => openEditModal(activePeriod)}
+                onClick={() => setSelectedPeriodIdForWindow(activePeriod.id)}
               >
-                <Edit3 className="w-3.5 h-3.5 mr-1" />
-                Jadwal Kalender Manual
+                <Sliders className="w-3.5 h-3.5 mr-1 text-[#2196F3]" />
+                Atur Jendela Waktu
               </Button>
               <Button
                 variant="primary"
@@ -370,295 +324,49 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-1">
-            {/* KARTU 1: Jendela Klaim MK (Asprak) */}
-            <div
-              className={`neo-box p-4 flex flex-col justify-between transition-colors ${
-                isCourseOpen ? "bg-[#F0FDF4] border-black" : "bg-white border-black"
-              }`}
-            >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black uppercase tracking-wider text-black">
-                    1. Jendela Klaim MK (Asprak)
-                  </span>
-                  {isCourseOpen ? (
-                    <span className="neo-box-sm bg-[#4CAF50] text-black px-2.5 py-1 text-xs font-black uppercase inline-flex items-center gap-1.5">
-                      <Unlock className="w-3.5 h-3.5" /> Terbuka
-                    </span>
-                  ) : (
-                    <span className="neo-box-sm bg-[#FF5252] text-white px-2.5 py-1 text-xs font-black uppercase inline-flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5" /> Ditutup
-                    </span>
-                  )}
-                </div>
-
-                <p className="text-xs text-neutral-600 leading-relaxed font-medium">
-                  {isCourseOpen
-                    ? "Asisten praktikum saat ini dapat memilih mata kuliah praktikum yang akan diampu pada semester ini."
-                    : "Asisten praktikum tidak dapat memilih atau mengganti mata kuliah praktikum saat ini."}
-                </p>
-
-                {isCourseOpen ? (
-                  <div className="neo-box-sm bg-white p-3 space-y-1.5 border-2 border-black">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 text-xs font-black text-black">
-                        <Clock className="w-4 h-4 text-blue-600 shrink-0" />
-                        <span>Tutup Otomatis:</span>
-                      </div>
-                      <span className="neo-box-sm bg-amber-300 text-black px-2 py-0.5 text-xs font-black shrink-0">
-                        ⏳ {getRemainingDaysText(activePeriod.courseInputEnd)}
-                      </span>
-                    </div>
-                    <p className="text-xs font-bold text-neutral-800 font-mono pl-5">
-                      {formatIndoDateTime(activePeriod.courseInputEnd)}
-                    </p>
-                    <div className="pt-1 pl-5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const curr = activePeriod.courseInputEnd
-                            ? toLocalDatetimeInputString(new Date(activePeriod.courseInputEnd))
-                            : toLocalDatetimeInputString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-                          setNewAutoCloseDate(curr);
-                          setAutoCloseModal({
-                            periodId: activePeriod.id,
-                            windowType: "course",
-                            title: "Sesuaikan Tutup Otomatis Klaim MK",
-                            currentDate: curr,
-                          });
-                        }}
-                        className="text-[11px] font-black underline text-blue-700 hover:text-blue-900"
-                      >
-                        Sesuaikan Waktu Tutup Otomatis
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="neo-box-sm bg-neutral-50 p-3 space-y-2 border-2 border-neutral-300">
-                    <span className="text-[11px] font-black uppercase text-neutral-700 block">
-                      Pilihan Tutup Otomatis saat Dibuka:
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[3, 7, 14, 30].map((days) => (
-                        <button
-                          key={days}
-                          type="button"
-                          onClick={() => setCourseOpenDays(days)}
-                          className={`px-2 py-1 text-xs font-black border-2 border-black ${
-                            courseOpenDays === days
-                              ? "bg-black text-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-                              : "bg-white text-black hover:bg-neutral-100"
-                          }`}
-                        >
-                          {days} Hari
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setCourseOpenDays("custom")}
-                        className={`px-2 py-1 text-xs font-black border-2 border-black ${
-                          courseOpenDays === "custom"
-                            ? "bg-black text-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-                            : "bg-white text-black hover:bg-neutral-100"
-                        }`}
-                      >
-                        Pilih Waktu...
-                      </button>
-                    </div>
-
-                    {courseOpenDays === "custom" && (
-                      <div className="pt-1">
-                        <label className="text-[10px] font-black text-neutral-600 block mb-1">
-                          Tutup Otomatis Pada:
-                        </label>
-                        <input
-                          type="datetime-local"
-                          value={courseCustomClose}
-                          onChange={(e) => setCourseCustomClose(e.target.value)}
-                          className="w-full text-xs p-1.5 border-2 border-black font-mono font-bold bg-white"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <div className="p-3 bg-white border-2 border-black flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-neutral-500 uppercase block">
+                  1. Klaim MK (Asprak)
+                </span>
+                <span className="text-xs font-black text-black">
+                  {isCourseOpen ? "Sedang Dibuka" : "Sedang Ditutup"}
+                </span>
               </div>
-
-              {/* Action Button */}
-              <div className="pt-4 border-t-2 border-dashed border-neutral-300 mt-4">
-                {isCourseOpen ? (
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    className="w-full justify-center"
-                    disabled={actionLoading === `${activePeriod.id}-course-close`}
-                    onClick={() => handleToggleWindow(activePeriod.id, "course", "close")}
-                  >
-                    <Lock className="w-4 h-4 mr-1.5" />
-                    {actionLoading === `${activePeriod.id}-course-close`
-                      ? "Menutup..."
-                      : "Tutup Jendela Sekarang"}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="w-full justify-center bg-[#4CAF50] text-black hover:bg-[#43A047]"
-                    disabled={actionLoading === `${activePeriod.id}-course-open`}
-                    onClick={() => handleToggleWindow(activePeriod.id, "course", "open")}
-                  >
-                    <Unlock className="w-4 h-4 mr-1.5" />
-                    {actionLoading === `${activePeriod.id}-course-open`
-                      ? "Membuka..."
-                      : "Buka Jendela Sekarang"}
-                  </Button>
-                )}
-              </div>
+              {isCourseOpen ? (
+                <span className="neo-box-sm bg-[#4CAF50] text-black px-2.5 py-1 text-[11px] font-black uppercase flex items-center gap-1">
+                  <Unlock className="w-3 h-3" />
+                  Terbuka ({getRemainingDaysText(activePeriod.courseInputEnd)})
+                </span>
+              ) : (
+                <span className="neo-box-sm bg-[#FF5252] text-white px-2.5 py-1 text-[11px] font-black uppercase flex items-center gap-1">
+                  <Lock className="w-3 h-3" />
+                  Ditutup
+                </span>
+              )}
             </div>
 
-            {/* KARTU 2: Jendela Input Praktikan */}
-            <div
-              className={`neo-box p-4 flex flex-col justify-between transition-colors ${
-                isStudentOpen ? "bg-[#F0FDF4] border-black" : "bg-white border-black"
-              }`}
-            >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black uppercase tracking-wider text-black">
-                    2. Jendela Input Praktikan
-                  </span>
-                  {isStudentOpen ? (
-                    <span className="neo-box-sm bg-[#4CAF50] text-black px-2.5 py-1 text-xs font-black uppercase inline-flex items-center gap-1.5">
-                      <Unlock className="w-3.5 h-3.5" /> Terbuka
-                    </span>
-                  ) : (
-                    <span className="neo-box-sm bg-[#FF5252] text-white px-2.5 py-1 text-xs font-black uppercase inline-flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5" /> Ditutup
-                    </span>
-                  )}
-                </div>
-
-                <p className="text-xs text-neutral-600 leading-relaxed font-medium">
-                  {isStudentOpen
-                    ? "Asisten praktikum saat ini dapat mendaftarkan mahasiswa bimbingan praktikan ke mata kuliah yang diampu."
-                    : "Penginputan data mahasiswa praktikan oleh asprak sedang dinonaktifkan / ditutup."}
-                </p>
-
-                {isStudentOpen ? (
-                  <div className="neo-box-sm bg-white p-3 space-y-1.5 border-2 border-black">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 text-xs font-black text-black">
-                        <Clock className="w-4 h-4 text-blue-600 shrink-0" />
-                        <span>Tutup Otomatis:</span>
-                      </div>
-                      <span className="neo-box-sm bg-amber-300 text-black px-2 py-0.5 text-xs font-black shrink-0">
-                        ⏳ {getRemainingDaysText(activePeriod.studentInputEnd)}
-                      </span>
-                    </div>
-                    <p className="text-xs font-bold text-neutral-800 font-mono pl-5">
-                      {formatIndoDateTime(activePeriod.studentInputEnd)}
-                    </p>
-                    <div className="pt-1 pl-5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const curr = activePeriod.studentInputEnd
-                            ? toLocalDatetimeInputString(new Date(activePeriod.studentInputEnd))
-                            : toLocalDatetimeInputString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-                          setNewAutoCloseDate(curr);
-                          setAutoCloseModal({
-                            periodId: activePeriod.id,
-                            windowType: "student",
-                            title: "Sesuaikan Tutup Otomatis Input Praktikan",
-                            currentDate: curr,
-                          });
-                        }}
-                        className="text-[11px] font-black underline text-blue-700 hover:text-blue-900"
-                      >
-                        Sesuaikan Waktu Tutup Otomatis
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="neo-box-sm bg-neutral-50 p-3 space-y-2 border-2 border-neutral-300">
-                    <span className="text-[11px] font-black uppercase text-neutral-700 block">
-                      Pilihan Tutup Otomatis saat Dibuka:
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[3, 7, 14, 30].map((days) => (
-                        <button
-                          key={days}
-                          type="button"
-                          onClick={() => setStudentOpenDays(days)}
-                          className={`px-2 py-1 text-xs font-black border-2 border-black ${
-                            studentOpenDays === days
-                              ? "bg-black text-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-                              : "bg-white text-black hover:bg-neutral-100"
-                          }`}
-                        >
-                          {days} Hari
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setStudentOpenDays("custom")}
-                        className={`px-2 py-1 text-xs font-black border-2 border-black ${
-                          studentOpenDays === "custom"
-                            ? "bg-black text-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-                            : "bg-white text-black hover:bg-neutral-100"
-                        }`}
-                      >
-                        Pilih Waktu...
-                      </button>
-                    </div>
-
-                    {studentOpenDays === "custom" && (
-                      <div className="pt-1">
-                        <label className="text-[10px] font-black text-neutral-600 block mb-1">
-                          Tutup Otomatis Pada:
-                        </label>
-                        <input
-                          type="datetime-local"
-                          value={studentCustomClose}
-                          onChange={(e) => setStudentCustomClose(e.target.value)}
-                          className="w-full text-xs p-1.5 border-2 border-black font-mono font-bold bg-white"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
+            <div className="p-3 bg-white border-2 border-black flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-neutral-500 uppercase block">
+                  2. Input Praktikan
+                </span>
+                <span className="text-xs font-black text-black">
+                  {isStudentOpen ? "Sedang Dibuka" : "Sedang Ditutup"}
+                </span>
               </div>
-
-              {/* Action Button */}
-              <div className="pt-4 border-t-2 border-dashed border-neutral-300 mt-4">
-                {isStudentOpen ? (
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    className="w-full justify-center"
-                    disabled={actionLoading === `${activePeriod.id}-student-close`}
-                    onClick={() => handleToggleWindow(activePeriod.id, "student", "close")}
-                  >
-                    <Lock className="w-4 h-4 mr-1.5" />
-                    {actionLoading === `${activePeriod.id}-student-close`
-                      ? "Menutup..."
-                      : "Tutup Jendela Sekarang"}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="w-full justify-center bg-[#4CAF50] text-black hover:bg-[#43A047]"
-                    disabled={actionLoading === `${activePeriod.id}-student-open`}
-                    onClick={() => handleToggleWindow(activePeriod.id, "student", "open")}
-                  >
-                    <Unlock className="w-4 h-4 mr-1.5" />
-                    {actionLoading === `${activePeriod.id}-student-open`
-                      ? "Membuka..."
-                      : "Buka Jendela Sekarang"}
-                  </Button>
-                )}
-              </div>
+              {isStudentOpen ? (
+                <span className="neo-box-sm bg-[#4CAF50] text-black px-2.5 py-1 text-[11px] font-black uppercase flex items-center gap-1">
+                  <Unlock className="w-3 h-3" />
+                  Terbuka ({getRemainingDaysText(activePeriod.studentInputEnd)})
+                </span>
+              ) : (
+                <span className="neo-box-sm bg-[#FF5252] text-white px-2.5 py-1 text-[11px] font-black uppercase flex items-center gap-1">
+                  <Lock className="w-3 h-3" />
+                  Ditutup
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -750,56 +458,40 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
                       {p.name}
                     </td>
 
-                    {/* Jendela Klaim MK */}
                     <td className="p-3 border-r-3 border-black">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        {isPCourseOpen ? (
-                          <span className="neo-box-sm bg-[#4CAF50] text-black text-[9px] px-1.5 py-0.2 font-black uppercase inline-flex items-center gap-1">
-                            <Unlock className="w-2.5 h-2.5" /> Buka
-                          </span>
-                        ) : (
-                          <span className="neo-box-sm bg-[#FF5252] text-white text-[9px] px-1.5 py-0.2 font-black uppercase inline-flex items-center gap-1">
-                            <Lock className="w-2.5 h-2.5" /> Ditutup
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[10px] font-mono text-neutral-600">
+                      <div className="flex items-center gap-2">
                         {isPCourseOpen ? (
                           <>
-                            <div>{formatIndoDateTime(p.courseInputEnd)}</div>
-                            <div className="font-bold text-amber-800 font-sans mt-0.5">
-                              ⏳ {getRemainingDaysText(p.courseInputEnd)}
-                            </div>
+                            <span className="neo-box-sm bg-[#4CAF50] text-black px-1.5 py-0.5 text-[10px] font-black uppercase">
+                              Buka
+                            </span>
+                            <span className="font-mono text-[11px] text-neutral-700">
+                              s.d. {formatIndoDateTime(p.courseInputEnd)}
+                            </span>
                           </>
                         ) : (
-                          <span>Tutup otomatis</span>
+                          <span className="neo-box-sm bg-[#FF5252] text-white px-1.5 py-0.5 text-[10px] font-black uppercase">
+                            Tutup
+                          </span>
                         )}
                       </div>
                     </td>
 
-                    {/* Jendela Input Praktikan */}
                     <td className="p-3 border-r-3 border-black">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        {isPStudentOpen ? (
-                          <span className="neo-box-sm bg-[#4CAF50] text-black text-[9px] px-1.5 py-0.2 font-black uppercase inline-flex items-center gap-1">
-                            <Unlock className="w-2.5 h-2.5" /> Buka
-                          </span>
-                        ) : (
-                          <span className="neo-box-sm bg-[#FF5252] text-white text-[9px] px-1.5 py-0.2 font-black uppercase inline-flex items-center gap-1">
-                            <Lock className="w-2.5 h-2.5" /> Ditutup
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[10px] font-mono text-neutral-600">
+                      <div className="flex items-center gap-2">
                         {isPStudentOpen ? (
                           <>
-                            <div>{formatIndoDateTime(p.studentInputEnd)}</div>
-                            <div className="font-bold text-amber-800 font-sans mt-0.5">
-                              ⏳ {getRemainingDaysText(p.studentInputEnd)}
-                            </div>
+                            <span className="neo-box-sm bg-[#4CAF50] text-black px-1.5 py-0.5 text-[10px] font-black uppercase">
+                              Buka
+                            </span>
+                            <span className="font-mono text-[11px] text-neutral-700">
+                              s.d. {formatIndoDateTime(p.studentInputEnd)}
+                            </span>
                           </>
                         ) : (
-                          <span>Tutup otomatis</span>
+                          <span className="neo-box-sm bg-[#FF5252] text-white px-1.5 py-0.5 text-[10px] font-black uppercase">
+                            Tutup
+                          </span>
                         )}
                       </div>
                     </td>
@@ -825,11 +517,11 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
                         <Button
                           variant="secondary"
                           size="sm"
-                          className="text-xs px-2 py-1"
-                          onClick={() => openEditModal(p)}
-                          title="Atur Kalender & Jadwal Manual"
+                          className="text-xs px-2.5 py-1"
+                          onClick={() => setSelectedPeriodIdForWindow(p.id)}
+                          title="Atur Jendela Waktu"
                         >
-                          <Edit3 className="w-3 h-3 mr-1" />
+                          <Sliders className="w-3 h-3 mr-1 text-[#2196F3]" />
                           Atur
                         </Button>
                         {!p.isActive && (
@@ -853,6 +545,321 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
         </div>
       </div>
 
+      {/* MODAL POP-UP KONTROL JENDELA (Tampil saat klik "Atur") */}
+      {selectedPeriod && (
+        <Modal
+          isOpen={!!selectedPeriod}
+          onClose={() => setSelectedPeriodIdForWindow(null)}
+          title={`Pengaturan Jendela: ${selectedPeriod.name}`}
+          maxWidth="2xl"
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-neutral-600 font-medium">
+              Kelola status pembukaan jendela klaim mata kuliah bagi asprak dan penginputan praktikan untuk periode ini.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+              {/* KARTU 1: Jendela Klaim MK (Asprak) */}
+              <div
+                className={`neo-box p-4 flex flex-col justify-between border-3 border-black transition-colors ${
+                  isTargetCourseOpen ? "bg-[#F0FDF4]" : "bg-white"
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-black">
+                      1. JENDELA KLAIM MK (ASPRAK)
+                    </span>
+                    {isTargetCourseOpen ? (
+                      <span className="neo-box-sm bg-[#4CAF50] text-black px-2.5 py-1 text-xs font-black uppercase border-2 border-black inline-flex items-center gap-1.5">
+                        <Unlock className="w-3.5 h-3.5" /> TERBUKA
+                      </span>
+                    ) : (
+                      <span className="neo-box-sm bg-[#FF5252] text-white px-2.5 py-1 text-xs font-black uppercase border-2 border-black inline-flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5" /> DITUTUP
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-neutral-600 leading-relaxed font-medium">
+                    {isTargetCourseOpen
+                      ? "Asisten praktikum saat ini dapat memilih mata kuliah praktikum yang akan diampu pada semester ini."
+                      : "Asisten praktikum tidak dapat memilih atau mengganti mata kuliah praktikum saat ini."}
+                  </p>
+
+                  {isTargetCourseOpen ? (
+                    <div className="neo-box-sm bg-white p-3 space-y-1.5 border-2 border-black">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-xs font-black text-black">
+                          <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+                          <span>Tutup Otomatis:</span>
+                        </div>
+                        <span className="neo-box-sm bg-amber-300 text-black px-2 py-0.5 text-xs font-black border-2 border-black shrink-0">
+                          ⏳ {getRemainingDaysText(selectedPeriod.courseInputEnd)}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-neutral-800 font-mono pl-5">
+                        {formatIndoDateTime(selectedPeriod.courseInputEnd)}
+                      </p>
+                      <div className="pt-1 pl-5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const curr = selectedPeriod.courseInputEnd
+                              ? toLocalDatetimeInputString(new Date(selectedPeriod.courseInputEnd))
+                              : toLocalDatetimeInputString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+                            setNewAutoCloseDate(curr);
+                            setAutoCloseModal({
+                              periodId: selectedPeriod.id,
+                              windowType: "course",
+                              title: "Sesuaikan Tutup Otomatis Klaim MK",
+                              currentDate: curr,
+                            });
+                          }}
+                          className="text-[11px] font-black underline text-blue-700 hover:text-blue-900"
+                        >
+                          Sesuaikan Waktu Tutup Otomatis
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="neo-box-sm bg-neutral-50 p-3 space-y-2 border-2 border-neutral-300">
+                      <span className="text-[11px] font-black uppercase text-neutral-700 block">
+                        Pilihan Tutup Otomatis saat Dibuka:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[3, 7, 14, 30].map((days) => (
+                          <button
+                            key={days}
+                            type="button"
+                            onClick={() => setCourseOpenDays(days)}
+                            className={`px-2 py-1 text-xs font-black border-2 border-black ${
+                              courseOpenDays === days
+                                ? "bg-black text-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                                : "bg-white text-black hover:bg-neutral-100"
+                            }`}
+                          >
+                            {days} Hari
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setCourseOpenDays("custom")}
+                          className={`px-2 py-1 text-xs font-black border-2 border-black ${
+                            courseOpenDays === "custom"
+                              ? "bg-black text-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                              : "bg-white text-black hover:bg-neutral-100"
+                          }`}
+                        >
+                          Pilih Waktu...
+                        </button>
+                      </div>
+
+                      {courseOpenDays === "custom" && (
+                        <div className="pt-1">
+                          <label className="text-[10px] font-black text-neutral-600 block mb-1">
+                            Tutup Otomatis Pada:
+                          </label>
+                          <input
+                            type="datetime-local"
+                            value={courseCustomClose}
+                            onChange={(e) => setCourseCustomClose(e.target.value)}
+                            className="w-full text-xs p-1.5 border-2 border-black font-mono font-bold bg-white"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Button */}
+                <div className="pt-4 border-t-2 border-dashed border-neutral-300 mt-4">
+                  {isTargetCourseOpen ? (
+                    <button
+                      type="button"
+                      disabled={actionLoading === `${selectedPeriod.id}-course-close`}
+                      onClick={() => handleToggleWindow(selectedPeriod.id, "course", "close")}
+                      className="w-full neo-btn py-2.5 bg-[#FF5252] text-white border-2 border-black font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-red-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                    >
+                      <Lock className="w-4 h-4" />
+                      {actionLoading === `${selectedPeriod.id}-course-close`
+                        ? "Menutup..."
+                        : "TUTUP JENDELA SEKARANG"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={actionLoading === `${selectedPeriod.id}-course-open`}
+                      onClick={() => handleToggleWindow(selectedPeriod.id, "course", "open")}
+                      className="w-full neo-btn py-2.5 bg-[#4CAF50] text-black border-2 border-black font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-[#43A047] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                    >
+                      <Unlock className="w-4 h-4" />
+                      {actionLoading === `${selectedPeriod.id}-course-open`
+                        ? "Membuka..."
+                        : "BUKA JENDELA SEKARANG"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* KARTU 2: Jendela Input Praktikan */}
+              <div
+                className={`neo-box p-4 flex flex-col justify-between border-3 border-black transition-colors ${
+                  isTargetStudentOpen ? "bg-[#F0FDF4]" : "bg-white"
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-black">
+                      2. JENDELA INPUT PRAKTIKAN
+                    </span>
+                    {isTargetStudentOpen ? (
+                      <span className="neo-box-sm bg-[#4CAF50] text-black px-2.5 py-1 text-xs font-black uppercase border-2 border-black inline-flex items-center gap-1.5">
+                        <Unlock className="w-3.5 h-3.5" /> TERBUKA
+                      </span>
+                    ) : (
+                      <span className="neo-box-sm bg-[#FF5252] text-white px-2.5 py-1 text-xs font-black uppercase border-2 border-black inline-flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5" /> DITUTUP
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-neutral-600 leading-relaxed font-medium">
+                    {isTargetStudentOpen
+                      ? "Asisten praktikum saat ini dapat mendaftarkan mahasiswa bimbingan praktikan ke mata kuliah yang diampu."
+                      : "Penginputan data mahasiswa praktikan oleh asprak sedang dinonaktifkan / ditutup."}
+                  </p>
+
+                  {isTargetStudentOpen ? (
+                    <div className="neo-box-sm bg-white p-3 space-y-1.5 border-2 border-black">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-xs font-black text-black">
+                          <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+                          <span>Tutup Otomatis:</span>
+                        </div>
+                        <span className="neo-box-sm bg-amber-300 text-black px-2 py-0.5 text-xs font-black border-2 border-black shrink-0">
+                          ⏳ {getRemainingDaysText(selectedPeriod.studentInputEnd)}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-neutral-800 font-mono pl-5">
+                        {formatIndoDateTime(selectedPeriod.studentInputEnd)}
+                      </p>
+                      <div className="pt-1 pl-5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const curr = selectedPeriod.studentInputEnd
+                              ? toLocalDatetimeInputString(new Date(selectedPeriod.studentInputEnd))
+                              : toLocalDatetimeInputString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+                            setNewAutoCloseDate(curr);
+                            setAutoCloseModal({
+                              periodId: selectedPeriod.id,
+                              windowType: "student",
+                              title: "Sesuaikan Tutup Otomatis Input Praktikan",
+                              currentDate: curr,
+                            });
+                          }}
+                          className="text-[11px] font-black underline text-blue-700 hover:text-blue-900"
+                        >
+                          Sesuaikan Waktu Tutup Otomatis
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="neo-box-sm bg-neutral-50 p-3 space-y-2 border-2 border-neutral-300">
+                      <span className="text-[11px] font-black uppercase text-neutral-700 block">
+                        Pilihan Tutup Otomatis saat Dibuka:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[3, 7, 14, 30].map((days) => (
+                          <button
+                            key={days}
+                            type="button"
+                            onClick={() => setStudentOpenDays(days)}
+                            className={`px-2 py-1 text-xs font-black border-2 border-black ${
+                              studentOpenDays === days
+                                ? "bg-black text-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                                : "bg-white text-black hover:bg-neutral-100"
+                            }`}
+                          >
+                            {days} Hari
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setStudentOpenDays("custom")}
+                          className={`px-2 py-1 text-xs font-black border-2 border-black ${
+                            studentOpenDays === "custom"
+                              ? "bg-black text-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                              : "bg-white text-black hover:bg-neutral-100"
+                          }`}
+                        >
+                          Pilih Waktu...
+                        </button>
+                      </div>
+
+                      {studentOpenDays === "custom" && (
+                        <div className="pt-1">
+                          <label className="text-[10px] font-black text-neutral-600 block mb-1">
+                            Tutup Otomatis Pada:
+                          </label>
+                          <input
+                            type="datetime-local"
+                            value={studentCustomClose}
+                            onChange={(e) => setStudentCustomClose(e.target.value)}
+                            className="w-full text-xs p-1.5 border-2 border-black font-mono font-bold bg-white"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Button */}
+                <div className="pt-4 border-t-2 border-dashed border-neutral-300 mt-4">
+                  {isTargetStudentOpen ? (
+                    <button
+                      type="button"
+                      disabled={actionLoading === `${selectedPeriod.id}-student-close`}
+                      onClick={() => handleToggleWindow(selectedPeriod.id, "student", "close")}
+                      className="w-full neo-btn py-2.5 bg-[#FF5252] text-white border-2 border-black font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-red-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                    >
+                      <Lock className="w-4 h-4" />
+                      {actionLoading === `${selectedPeriod.id}-student-close`
+                        ? "Menutup..."
+                        : "TUTUP JENDELA SEKARANG"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={actionLoading === `${selectedPeriod.id}-student-open`}
+                      onClick={() => handleToggleWindow(selectedPeriod.id, "student", "open")}
+                      className="w-full neo-btn py-2.5 bg-[#4CAF50] text-black border-2 border-black font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-[#43A047] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                    >
+                      <Unlock className="w-4 h-4" />
+                      {actionLoading === `${selectedPeriod.id}-student-open`
+                        ? "Membuka..."
+                        : "BUKA JENDELA SEKARANG"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-3 border-t-2 border-neutral-200">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setSelectedPeriodIdForWindow(null)}
+              >
+                Selesai / Tutup Pop-up
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Modal Sesuaikan Waktu Tutup Otomatis */}
       {autoCloseModal && (
         <Modal
@@ -862,7 +869,7 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
           maxWidth="sm"
         >
           <form onSubmit={handleSaveAutoClose} className="space-y-4">
-            <p className="text-xs text-neutral-600">
+            <p className="text-xs text-neutral-600 font-medium">
               Jendela saat ini sedang dibuka. Tentukan kapan jendela ini akan ditutup secara otomatis oleh sistem.
             </p>
 
@@ -908,99 +915,6 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
                 disabled={actionLoading === "save-autoclose"}
               >
                 {actionLoading === "save-autoclose" ? "Menyimpan..." : "Simpan Waktu Tutup"}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* Modal Edit Kalender & Jadwal Manual */}
-      {editingPeriod && (
-        <Modal
-          isOpen={!!editingPeriod}
-          onClose={() => setEditingPeriod(null)}
-          title={`Jadwal Manual: ${editingPeriod.name}`}
-          maxWidth="md"
-        >
-          <form onSubmit={handleSaveEdit} className="space-y-4">
-            {editError && (
-              <div className="neo-box-sm bg-[#FF5252] text-white p-2.5 text-xs font-black">
-                ⚠️ {editError}
-              </div>
-            )}
-
-            {/* Jendela Klaim MK */}
-            <div className="p-3 bg-blue-50 border-2 border-neutral-300 rounded space-y-3">
-              <span className="text-xs font-black uppercase text-blue-900 block">
-                1. Batas Waktu Pengambilan / Klaim MK (Asprak)
-              </span>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-neutral-700 block mb-1">
-                    Buka Klaim MK
-                  </label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={editCourseStart}
-                    onChange={(e) => setEditCourseStart(e.target.value)}
-                    className="w-full text-xs p-2 border-2 border-black font-mono font-bold bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-neutral-700 block mb-1">
-                    Tutup Otomatis Klaim MK
-                  </label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={editCourseEnd}
-                    onChange={(e) => setEditCourseEnd(e.target.value)}
-                    className="w-full text-xs p-2 border-2 border-black font-mono font-bold bg-white"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Jendela Input Praktikan */}
-            <div className="p-3 bg-amber-50 border-2 border-neutral-300 rounded space-y-3">
-              <span className="text-xs font-black uppercase text-amber-900 block">
-                2. Batas Waktu Input Data Praktikan (Asprak)
-              </span>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-neutral-700 block mb-1">
-                    Buka Input Praktikan
-                  </label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={editStudentStart}
-                    onChange={(e) => setEditStudentStart(e.target.value)}
-                    className="w-full text-xs p-2 border-2 border-black font-mono font-bold bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-neutral-700 block mb-1">
-                    Tutup Otomatis Input Praktikan
-                  </label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={editStudentEnd}
-                    onChange={(e) => setEditStudentEnd(e.target.value)}
-                    className="w-full text-xs p-2 border-2 border-black font-mono font-bold bg-white"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t-2 border-neutral-200">
-              <Button type="button" variant="secondary" onClick={() => setEditingPeriod(null)}>
-                Batal
-              </Button>
-              <Button type="submit" variant="primary" disabled={editLoading}>
-                {editLoading ? "Menyimpan..." : "Simpan Perubahan"}
               </Button>
             </div>
           </form>

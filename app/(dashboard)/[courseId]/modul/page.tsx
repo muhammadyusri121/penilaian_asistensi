@@ -5,7 +5,7 @@ import { getSession } from "@/lib/security";
 import { getCourseByIdAction, getMyCourseProposalAction } from "@/features/courses/actions/course.actions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Layers, ArrowRight, Lock, AlertCircle, Users } from "lucide-react";
+import { Layers, ArrowRight, Lock, AlertCircle, Users, Edit3, Sliders } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Daftar Modul Praktikum | Workspace",
@@ -33,7 +33,7 @@ export default async function CourseModulPage({
   return (
     <div className="space-y-6">
       {/* Header Title */}
-      <div className="flex items-center justify-between border-b-3 border-black pb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-3 border-black pb-3">
         <div>
           <h2 className="text-xl font-black uppercase tracking-tight text-black flex items-center gap-2">
             <Layers className="w-6 h-6" />
@@ -42,6 +42,40 @@ export default async function CourseModulPage({
           <p className="text-xs font-bold text-neutral-600">
             Pilih modul praktikum di bawah untuk memulai lembar penilaian asistensi mahasiswa binaan Anda.
           </p>
+        </div>
+
+        {session.role === "ADMIN" && (
+          <Link href={`/admin/matakuliah/${courseId}/edit`}>
+            <Button variant="secondary" size="sm" className="bg-yellow-300 hover:bg-yellow-400 text-xs font-black self-start sm:self-auto shrink-0">
+              <Edit3 className="w-3.5 h-3.5 mr-1.5" />
+              Edit MK & Modul
+            </Button>
+          </Link>
+        )}
+      </div>
+
+      {/* Bobot Penilaian Semester Info Banner */}
+      <div className="neo-box-sm bg-white p-3 border-2 border-black flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Sliders className="w-4 h-4 text-black" />
+          <span className="text-xs font-black uppercase text-black">Bobot Penilaian Semester:</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
+          <span className="bg-sky-100 text-sky-800 border border-sky-400 px-2 py-0.5 rounded text-[11px]">
+            Presensi: {course.weightAttendance ?? 10}%
+          </span>
+          <span className="bg-emerald-100 text-emerald-800 border border-emerald-400 px-2 py-0.5 rounded text-[11px]">
+            Tugas: {course.weightAssignment ?? 20}%
+          </span>
+          <span className="bg-amber-100 text-amber-800 border border-amber-400 px-2 py-0.5 rounded text-[11px]">
+            Pretest: {course.weightPretest ?? 10}%
+          </span>
+          <span className="bg-orange-100 text-orange-800 border border-orange-400 px-2 py-0.5 rounded text-[11px]">
+            UTS: {course.weightUts ?? 25}%
+          </span>
+          <span className="bg-rose-100 text-rose-800 border border-rose-400 px-2 py-0.5 rounded text-[11px]">
+            UAS: {course.weightUas ?? 35}%
+          </span>
         </div>
       </div>
 

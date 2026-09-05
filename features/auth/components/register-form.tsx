@@ -23,17 +23,18 @@ export function RegisterForm() {
     setSuccessMsg(null);
 
     try {
-      const res = await registerAction({
-        username,
-        name,
-        email: email || undefined,
-        password,
-      });
+      const formData = new FormData();
+      formData.append("username", username);
+      formData.append("name", name);
+      if (email) formData.append("email", email);
+      formData.append("password", password);
+
+      const res = await registerAction(formData);
 
       if (res.success) {
         setSuccessMsg(
           res.message ||
-            "Pendaftaran berhasil! Akun Anda sedang menunggu persetujuan (ACC) dari Koordinator Laboratorium."
+          "Pendaftaran berhasil! Akun Anda sedang menunggu persetujuan (ACC) dari Koordinator Laboratorium."
         );
         setUsername("");
         setName("");

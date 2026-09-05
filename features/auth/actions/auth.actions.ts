@@ -17,8 +17,18 @@ export interface ActionResult<T = unknown> {
 /**
  * Server Action Registrasi Calon Asprak (Menunggu ACC Admin)
  */
-export async function registerAction(rawInput: RegisterInput): Promise<ActionResult> {
-  const parsed = registerSchema.safeParse(rawInput);
+export async function registerAction(rawInput: FormData | RegisterInput): Promise<ActionResult> {
+  const data =
+    rawInput instanceof FormData
+      ? {
+          username: String(rawInput.get("username") || ""),
+          name: String(rawInput.get("name") || ""),
+          email: rawInput.get("email") ? String(rawInput.get("email")) : undefined,
+          password: String(rawInput.get("password") || ""),
+        }
+      : rawInput;
+
+  const parsed = registerSchema.safeParse(data);
   if (!parsed.success) {
     return {
       success: false,
@@ -88,8 +98,16 @@ export async function registerAction(rawInput: RegisterInput): Promise<ActionRes
 /**
  * Server Action Login untuk Asprak & Admin
  */
-export async function loginAction(rawInput: LoginInput): Promise<ActionResult> {
-  const parsed = loginSchema.safeParse(rawInput);
+export async function loginAction(rawInput: FormData | LoginInput): Promise<ActionResult> {
+  const data =
+    rawInput instanceof FormData
+      ? {
+          username: String(rawInput.get("username") || ""),
+          password: String(rawInput.get("password") || ""),
+        }
+      : rawInput;
+
+  const parsed = loginSchema.safeParse(data);
   if (!parsed.success) {
     return {
       success: false,

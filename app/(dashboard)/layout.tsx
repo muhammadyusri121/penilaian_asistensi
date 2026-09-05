@@ -40,7 +40,7 @@ export default async function DashboardLayout({
               <Link href="/praktikum" className="text-lg font-black uppercase tracking-tight text-black flex items-center gap-2">
                 Asistensi Lab
                 <span className="neo-box-sm text-[10px] px-1.5 py-0.5 bg-[#2196F3] text-white">
-                  v1.2
+                  v 2.0
                 </span>
               </Link>
               <p className="text-[10px] font-bold text-neutral-500 uppercase">

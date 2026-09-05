@@ -20,7 +20,11 @@ export function LoginForm() {
     setErrorMsg(null);
 
     try {
-      const res = await loginAction({ username, password });
+      const formData = new FormData();
+      formData.append("username", username);
+      formData.append("password", password);
+
+      const res = await loginAction(formData);
       if (res.success) {
         if (res.role === "ADMIN") {
           router.push("/admin/matakuliah");

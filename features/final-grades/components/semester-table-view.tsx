@@ -14,6 +14,13 @@ interface SemesterTableViewProps {
   data: {
     modules: Array<{ id: string; title: string; orderIndex: number; isFinalReport: boolean }>;
     pretests: Array<{ id: string; title: string; orderIndex: number }>;
+    weights?: {
+      attendance: number;
+      assignment: number;
+      pretest: number;
+      uts: number;
+      uas: number;
+    };
     students: Array<{
       student: {
         nim: string;
@@ -42,6 +49,7 @@ interface SemesterTableViewProps {
 export function SemesterTableView({ data, courseId }: SemesterTableViewProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
+  const w = data.weights ?? { attendance: 10, assignment: 20, pretest: 10, uts: 25, uas: 35 };
   const [selectedStudentForExam, setSelectedStudentForExam] = useState<{
     nim: string;
     name: string;
@@ -140,29 +148,29 @@ export function SemesterTableView({ data, courseId }: SemesterTableViewProps) {
                 <th rowSpan={2} className="p-2 border-r border-neutral-700 w-28">NIM</th>
                 <th rowSpan={2} className="p-2 border-r border-neutral-700 min-w-[150px]">Nama Lengkap</th>
                 
-                {/* 1. Kehadiran 10% */}
+                {/* 1. Kehadiran */}
                 <th colSpan={13} className="p-2 border-r border-neutral-700 text-center bg-amber-400 text-black font-black">
-                  Kehadiran Praktikan (10%)
+                  Kehadiran Praktikan ({w.attendance}%)
                 </th>
 
-                {/* 2. Tugas & Laporan 20% */}
+                {/* 2. Tugas & Laporan */}
                 <th colSpan={data.modules.length + 2} className="p-2 border-r border-neutral-700 text-center bg-sky-400 text-black font-black">
-                  Tugas dan Laporan (20%)
+                  Tugas dan Laporan ({w.assignment}%)
                 </th>
 
-                {/* 3. Pretest 10% */}
+                {/* 3. Pretest */}
                 <th colSpan={Math.max(1, data.pretests.length) + 2} className="p-2 border-r border-neutral-700 text-center bg-teal-400 text-black font-black">
-                  Pretest (10%)
+                  Pretest ({w.pretest}%)
                 </th>
 
-                {/* 4. UTS 25% */}
+                {/* 4. UTS */}
                 <th colSpan={2} className="p-2 border-r border-neutral-700 text-center bg-orange-400 text-black font-black">
-                  UTS (25%)
+                  UTS ({w.uts}%)
                 </th>
 
-                {/* 5. UAS 35% */}
+                {/* 5. UAS */}
                 <th colSpan={2} className="p-2 border-r border-neutral-700 text-center bg-rose-400 text-black font-black">
-                  UAS (35%)
+                  UAS ({w.uas}%)
                 </th>
 
                 {/* Total & NA */}
@@ -199,7 +207,7 @@ export function SemesterTableView({ data, courseId }: SemesterTableViewProps) {
                   Average
                 </th>
                 <th className="p-1 border-r border-neutral-700 text-center bg-sky-600 text-black font-black w-14">
-                  Total (20%)
+                  Total ({w.assignment}%)
                 </th>
 
                 {/* Pretest + Average + Total */}
@@ -216,16 +224,16 @@ export function SemesterTableView({ data, courseId }: SemesterTableViewProps) {
                   Average
                 </th>
                 <th className="p-1 border-r border-neutral-700 text-center bg-teal-600 text-black font-black w-14">
-                  Total (10%)
+                  Total ({w.pretest}%)
                 </th>
 
                 {/* UTS */}
                 <th className="p-1 border-r border-neutral-700 text-center w-14">Murni</th>
-                <th className="p-1 border-r border-neutral-700 text-center bg-orange-500 text-black font-black w-14">25%</th>
+                <th className="p-1 border-r border-neutral-700 text-center bg-orange-500 text-black font-black w-14">{w.uts}%</th>
 
                 {/* UAS */}
                 <th className="p-1 border-r border-neutral-700 text-center w-14">Murni</th>
-                <th className="p-1 border-r border-neutral-700 text-center bg-rose-500 text-black font-black w-14">35%</th>
+                <th className="p-1 border-r border-neutral-700 text-center bg-rose-500 text-black font-black w-14">{w.uas}%</th>
               </tr>
             </thead>
 
@@ -380,7 +388,7 @@ export function SemesterTableView({ data, courseId }: SemesterTableViewProps) {
           )}
 
           <Input
-            label="Nilai Murni UTS (Bobot 25%)"
+            label={`Nilai Murni UTS (Bobot ${w.uts}%)`}
             type="number"
             min={0}
             max={100}
@@ -391,7 +399,7 @@ export function SemesterTableView({ data, courseId }: SemesterTableViewProps) {
           />
 
           <Input
-            label="Nilai Murni UAS (Bobot 35%)"
+            label={`Nilai Murni UAS (Bobot ${w.uas}%)`}
             type="number"
             min={0}
             max={100}

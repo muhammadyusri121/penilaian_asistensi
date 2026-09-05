@@ -6,6 +6,11 @@ import { createCourseByAdminAction } from "../actions/course.actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Trash2, BookOpen, Layers, CheckCircle2 } from "lucide-react";
+import {
+  CourseWeightsEditor,
+  CourseWeights,
+  DEFAULT_COURSE_WEIGHTS,
+} from "./course-weights-editor";
 
 interface ModuleInputRow {
   title: string;
@@ -20,6 +25,7 @@ export function CourseBuilderForm() {
   const [description, setDescription] = useState("");
   const [scheduleDay, setScheduleDay] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
+  const [weights, setWeights] = useState<CourseWeights>({ ...DEFAULT_COURSE_WEIGHTS });
   const [modules, setModules] = useState<ModuleInputRow[]>([
     { title: "Modul 1: Pengantar & Teori Dasar", description: "", isFinalReport: false },
     { title: "Modul 2: Implementasi Dasar", description: "", isFinalReport: false },
@@ -71,6 +77,20 @@ export function CourseBuilderForm() {
       }
     }
 
+    // Validasi total bobot penilaian tepat 100%
+    const totalWeights =
+      weights.weightAttendance +
+      weights.weightAssignment +
+      weights.weightPretest +
+      weights.weightUts +
+      weights.weightUas;
+
+    if (Math.abs(totalWeights - 100) > 0.01) {
+      setErrorMsg(`Total bobot persentase penilaian harus tepat 100%! Saat ini: ${totalWeights}%.`);
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await createCourseByAdminAction({
         code: code.trim(),
@@ -78,6 +98,11 @@ export function CourseBuilderForm() {
         description: description.trim() || undefined,
         scheduleDay: scheduleDay.trim() || undefined,
         scheduleTime: scheduleTime.trim() || undefined,
+        weightAttendance: weights.weightAttendance,
+        weightAssignment: weights.weightAssignment,
+        weightPretest: weights.weightPretest,
+        weightUts: weights.weightUts,
+        weightUas: weights.weightUas,
         modules: modules.map((m) => ({
           title: m.title.trim(),
           description: m.description.trim() || undefined,
@@ -203,6 +228,13 @@ export function CourseBuilderForm() {
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
+
+          {/* Kustomisasi Bobot Persentase Penilaian */}
+          <CourseWeightsEditor
+            weights={weights}
+            onChange={setWeights}
+            disabled={loading}
+          />
 
           {/* Penyusunan Modul Dinamis */}
           <div className="border-t-3 border-black pt-6">

@@ -43,10 +43,10 @@ export default async function CourseWorkspaceLayout({
               <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight text-black">
                 {course.title}
               </h1>
-              {((course as any).scheduleDay || (course as any).scheduleTime) && (
+              {(course.scheduleDay || course.scheduleTime) && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-[#E0F2FE] border-2 border-black text-xs font-black text-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-                  <span>🗓️ {(course as any).scheduleDay || "Hari ?"}</span>
-                  {(course as any).scheduleTime && <span>• ⏰ {(course as any).scheduleTime}</span>}
+                  <span>🗓️ {course.scheduleDay || "Hari ?"}</span>
+                  {course.scheduleTime && <span>• ⏰ {course.scheduleTime}</span>}
                 </span>
               )}
             </div>

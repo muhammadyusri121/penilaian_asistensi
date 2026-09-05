@@ -14,18 +14,6 @@ import {
 } from "@/features/periods/actions/period.actions";
 import { revalidatePath } from "next/cache";
 
-let hasEnsuredScheduleColumns = false;
-async function ensureScheduleColumns() {
-  if (hasEnsuredScheduleColumns) return;
-  try {
-    await prisma.$executeRawUnsafe(`ALTER TABLE "Course" ADD COLUMN IF NOT EXISTS "scheduleDay" TEXT;`);
-    await prisma.$executeRawUnsafe(`ALTER TABLE "Course" ADD COLUMN IF NOT EXISTS "scheduleTime" TEXT;`);
-    hasEnsuredScheduleColumns = true;
-  } catch (err) {
-    console.warn("ensureScheduleColumns notice:", err);
-  }
-}
-
 /**
  * Otomatis seed contoh Mata Kuliah Praktikum & Modul jika database masih kosong
  */
@@ -134,7 +122,19 @@ export async function createCourseByAdminAction(input: CreateCourseInput) {
     return { success: false, message: parsed.error.issues[0]?.message || "Validasi data gagal" };
   }
 
-  const { code, title, description, scheduleDay, scheduleTime, modules } = parsed.data;
+  const {
+    code,
+    title,
+    description,
+    scheduleDay,
+    scheduleTime,
+    modules,
+    weightAttendance,
+    weightAssignment,
+    weightPretest,
+    weightUts,
+    weightUas,
+  } = parsed.data;
 
   try {
     const course = await prisma.$transaction(async (tx) => {
@@ -144,23 +144,16 @@ export async function createCourseByAdminAction(input: CreateCourseInput) {
           code: code.trim(),
           title: title.trim(),
           description: description?.trim() || null,
+          scheduleDay: scheduleDay?.trim() || null,
+          scheduleTime: scheduleTime?.trim() || null,
+          weightAttendance: weightAttendance ?? 10,
+          weightAssignment: weightAssignment ?? 20,
+          weightPretest: weightPretest ?? 10,
+          weightUts: weightUts ?? 25,
+          weightUas: weightUas ?? 35,
           creatorId: session.userId,
         },
       });
-
-      if (scheduleDay || scheduleTime) {
-        try {
-          await tx.$executeRawUnsafe(
-            `UPDATE "Course" SET "scheduleDay" = $1, "scheduleTime" = $2 WHERE id = $3`,
-            scheduleDay?.trim() || null,
-            scheduleTime?.trim() || null,
-            createdCourse.id
-          );
-        } catch (e) {
-          console.warn("Could not save schedule columns", e);
-        }
-      }
-
       for (let i = 0; i < modules.length; i++) {
         const mod = modules[i];
         await tx.module.create({
@@ -200,38 +193,43 @@ export async function updateCourseByAdminAction(courseId: string, input: UpdateC
     return { success: false, message: "Hanya Koordinator Lab (Admin) yang berhak mengedit mata kuliah." };
   }
 
-  await ensureScheduleColumns();
-
   const parsed = updateCourseSchema.safeParse(input);
   if (!parsed.success) {
     return { success: false, message: parsed.error.issues[0]?.message || "Validasi data gagal" };
   }
 
-  const { code, title, description, scheduleDay, scheduleTime, modules } = parsed.data;
+  const {
+    code,
+    title,
+    description,
+    scheduleDay,
+    scheduleTime,
+    modules,
+    weightAttendance,
+    weightAssignment,
+    weightPretest,
+    weightUts,
+    weightUas,
+  } = parsed.data;
 
   try {
     await prisma.$transaction(async (tx) => {
-      // 1. Update detail Course (hanya field standar Prisma untuk mencegah PrismaClientValidationError)
+      // 1. Update detail Course & bobot persentase secara typed
       await tx.course.update({
         where: { id: courseId },
         data: {
           code: code.trim(),
           title: title.trim(),
           description: description?.trim() || null,
+          scheduleDay: scheduleDay?.trim() || null,
+          scheduleTime: scheduleTime?.trim() || null,
+          weightAttendance: weightAttendance ?? 10,
+          weightAssignment: weightAssignment ?? 20,
+          weightPretest: weightPretest ?? 10,
+          weightUts: weightUts ?? 25,
+          weightUas: weightUas ?? 35,
         },
       });
-
-      // 2. Update jadwal hari & jam via raw SQL langsung ke database
-      try {
-        await tx.$executeRawUnsafe(
-          `UPDATE "Course" SET "scheduleDay" = $1, "scheduleTime" = $2 WHERE id = $3`,
-          scheduleDay?.trim() || null,
-          scheduleTime?.trim() || null,
-          courseId
-        );
-      } catch (e) {
-        console.warn("Could not update schedule columns", e);
-      }
 
       // 3. Ambil modul-modul yang saat ini ada di DB
       const existingModules = await tx.module.findMany({
@@ -365,17 +363,6 @@ export async function getCatalogCoursesAction() {
     },
   });
 
-  await ensureScheduleColumns();
-  const scheduleMap = new Map<string, { scheduleDay: string | null; scheduleTime: string | null }>();
-  try {
-    const rawSchedules = await prisma.$queryRawUnsafe<
-      Array<{ id: string; scheduleDay: string | null; scheduleTime: string | null }>
-    >(`SELECT id, "scheduleDay", "scheduleTime" FROM "Course" WHERE "academicPeriodId" = $1`, activePeriod.id);
-    rawSchedules.forEach((r) => scheduleMap.set(r.id, { scheduleDay: r.scheduleDay, scheduleTime: r.scheduleTime }));
-  } catch (e) {
-    // ignore
-  }
-
   const now = new Date();
   const courseStart = activePeriod.courseInputStart
     ? new Date(activePeriod.courseInputStart)
@@ -388,12 +375,16 @@ export async function getCatalogCoursesAction() {
   let mappedCourses = courses.map((c) => {
     const myAssignment = c.assistants.find((a) => a.assistantId === session.userId);
     const isClaimedByMe = !!myAssignment;
-    const myProposalStatus = (myAssignment as any)?.status || null;
-    const sched = scheduleMap.get(c.id);
+    const myProposalStatus = myAssignment?.status || null;
     return {
       ...c,
-      scheduleDay: sched?.scheduleDay ?? (c as any).scheduleDay ?? null,
-      scheduleTime: sched?.scheduleTime ?? (c as any).scheduleTime ?? null,
+      scheduleDay: c.scheduleDay,
+      scheduleTime: c.scheduleTime,
+      weightAttendance: c.weightAttendance ?? 10,
+      weightAssignment: c.weightAssignment ?? 20,
+      weightPretest: c.weightPretest ?? 10,
+      weightUts: c.weightUts ?? 25,
+      weightUas: c.weightUas ?? 35,
       isClaimedByMe,
       myProposalStatus,
     };
@@ -406,6 +397,66 @@ export async function getCatalogCoursesAction() {
   }
 
   return mappedCourses;
+}
+
+/**
+ * Dapatkan daftar mata kuliah yang diambil/diamapu oleh asisten saat ini
+ */
+export async function getMyAssignedCoursesAction() {
+  const session = await getSession();
+  if (!session) return [];
+
+  const activePeriod = await getActivePeriodAction();
+
+  let courses = await prisma.course.findMany({
+    where: {
+      ...(activePeriod ? { academicPeriodId: activePeriod.id } : {}),
+      assistants: {
+        some: {
+          assistantId: session.userId,
+        },
+      },
+    },
+    orderBy: { code: "asc" },
+    include: {
+      academicPeriod: { select: { name: true } },
+      modules: { orderBy: { orderIndex: "asc" } },
+      _count: {
+        select: {
+          modules: true,
+          enrollments: true,
+          assistants: true,
+        },
+      },
+    },
+  });
+
+  // Fallback jika tidak ada di periode aktif tapi ada di periode lain
+  if (courses.length === 0 && activePeriod) {
+    courses = await prisma.course.findMany({
+      where: {
+        assistants: {
+          some: {
+            assistantId: session.userId,
+          },
+        },
+      },
+      orderBy: { code: "asc" },
+      include: {
+        academicPeriod: { select: { name: true } },
+        modules: { orderBy: { orderIndex: "asc" } },
+        _count: {
+          select: {
+            modules: true,
+            enrollments: true,
+            assistants: true,
+          },
+        },
+      },
+    });
+  }
+
+  return courses;
 }
 
 /**
@@ -548,7 +599,7 @@ export async function getMyCourseProposalAction(courseId: string) {
     if (!ca) return null;
 
     return {
-      status: (ca as any).status || "APPROVED",
+      status: (ca as any).status || "DRAFT",
       submittedAt: (ca as any).submittedAt || null,
       approvedAt: (ca as any).approvedAt || null,
       notes: (ca as any).notes || null,
@@ -755,18 +806,6 @@ export async function getCourseByIdAction(courseId: string) {
   });
 
   if (!course) return null;
-
-  try {
-    const raw = await prisma.$queryRawUnsafe<
-      Array<{ scheduleDay: string | null; scheduleTime: string | null }>
-    >(`SELECT "scheduleDay", "scheduleTime" FROM "Course" WHERE id = $1`, courseId);
-    if (raw && raw[0]) {
-      (course as any).scheduleDay = raw[0].scheduleDay ?? (course as any).scheduleDay ?? null;
-      (course as any).scheduleTime = raw[0].scheduleTime ?? (course as any).scheduleTime ?? null;
-    }
-  } catch (e) {
-    // ignore
-  }
 
   if (session.role !== "ADMIN") {
     const isCreator = course.creatorId === session.userId;
