@@ -18,6 +18,13 @@ enum UserStatus {
   SUSPENDED          // Dinonaktifkan sementara
 }
 
+enum ProposalStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
 enum SubmissionStatus {
   NOT_SUBMITTED
   SUBMITTED
@@ -80,6 +87,8 @@ model Course {
   code              String          // Contoh: "IF201"
   title             String          // Contoh: "Struktur Data"
   description       String?
+  scheduleDay       String?         // Contoh: "Senin", "Selasa", dll.
+  scheduleTime      String?         // Contoh: "08:00 - 10:30 WIB"
   creatorId         String          // Admin pembuat
 
   createdAt         DateTime        @default(now())
@@ -95,15 +104,19 @@ model Course {
   finalGrades       FinalGrade[]
 }
 
-// Relasi Asisten yang mengampu Mata Kuliah Praktikum
+// Relasi Asisten yang mengampu Mata Kuliah Praktikum & Pengajuan Proposal
 model CourseAssistant {
-  id          String   @id @default(uuid())
+  id          String         @id @default(uuid())
   courseId    String
   assistantId String
-  assignedAt  DateTime @default(now())
+  status      ProposalStatus @default(DRAFT)
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  notes       String?
+  assignedAt  DateTime       @default(now())
 
-  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  assistant   User     @relation(fields: [assistantId], references: [id], onDelete: Cascade)
+  course      Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  assistant   User           @relation(fields: [assistantId], references: [id], onDelete: Cascade)
 
   @@unique([courseId, assistantId])
 }

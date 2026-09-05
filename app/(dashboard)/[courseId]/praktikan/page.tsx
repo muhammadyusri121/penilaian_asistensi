@@ -2,6 +2,9 @@ import { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/security";
 import { getCourseStudentsAction } from "@/features/students/actions/student.actions";
+import { getMyCourseProposalAction } from "@/features/courses/actions/course.actions";
+import { getActiveAssistantsAction } from "@/features/admin/actions/admin.actions";
+import { getActivePeriodAction } from "@/features/periods/actions/period.actions";
 import { CourseStudentManager } from "@/features/students/components/course-student-manager";
 import { Users } from "lucide-react";
 
@@ -19,7 +22,12 @@ export default async function CoursePraktikanPage({
   if (!session) redirect("/login");
 
   const { courseId } = await params;
-  const students = await getCourseStudentsAction(courseId);
+  const [students, proposal, activeAssistants, activePeriod] = await Promise.all([
+    getCourseStudentsAction(courseId),
+    session.role !== "ADMIN" ? getMyCourseProposalAction(courseId) : null,
+    session.role === "ADMIN" ? getActiveAssistantsAction() : [],
+    getActivePeriodAction(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -42,6 +50,10 @@ export default async function CoursePraktikanPage({
         students={students}
         currentUserId={session.userId}
         isAdmin={session.role === "ADMIN"}
+        proposalStatus={proposal?.status}
+        proposalNotes={proposal?.notes}
+        assistantsList={activeAssistants}
+        studentInputEnd={activePeriod?.studentInputEnd}
       />
     </div>
   );

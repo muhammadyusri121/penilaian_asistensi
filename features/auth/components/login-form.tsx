@@ -22,7 +22,11 @@ export function LoginForm() {
     try {
       const res = await loginAction({ username, password });
       if (res.success) {
-        router.push("/modul");
+        if (res.role === "ADMIN") {
+          router.push("/admin/matakuliah");
+        } else {
+          router.push("/praktikum");
+        }
         router.refresh();
       } else {
         setErrorMsg(res.message || "Login gagal, silakan coba lagi.");

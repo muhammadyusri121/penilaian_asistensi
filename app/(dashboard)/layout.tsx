@@ -73,17 +73,8 @@ export default async function DashboardLayout({
         {/* Navigation Bar */}
         <nav className="border-t-2 border-black bg-[#FFEB3B] px-4">
           <div className="max-w-7xl mx-auto flex items-center gap-1.5 sm:gap-2 overflow-x-auto py-1.5">
-            {/* Katalog Praktikum (Asprak & Admin) */}
-            <Link
-              href="/praktikum"
-              className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              Katalog Praktikum
-            </Link>
-
             {/* Menu Khusus Admin */}
-            {isAdmin && (
+            {isAdmin ? (
               <>
                 <Link
                   href="/admin/matakuliah"
@@ -93,44 +84,60 @@ export default async function DashboardLayout({
                   Master Mata Kuliah
                 </Link>
                 <Link
+                  href="/admin/pengajuan-matakuliah"
+                  className="neo-btn text-xs px-3 py-1.5 bg-black text-white font-black flex items-center gap-1.5 shrink-0 hover:bg-neutral-800"
+                >
+                  <UserCheck className="w-3.5 h-3.5 text-amber-400" />
+                  Pengajuan MK
+                </Link>
+                <Link
                   href="/admin/persetujuan-akun"
                   className="neo-btn text-xs px-3 py-1.5 bg-black text-white font-black flex items-center gap-1.5 shrink-0 hover:bg-neutral-800"
                 >
                   <UserCheck className="w-3.5 h-3.5 text-[#00E5FF]" />
-                  ACC Akun Asprak
+                  Akun Asprak
+                </Link>
+                <Link
+                  href="/admin/rekap-nilai"
+                  className="neo-btn text-xs px-3 py-1.5 bg-black text-white font-black flex items-center gap-1.5 shrink-0 hover:bg-neutral-800"
+                >
+                  <Award className="w-3.5 h-3.5 text-[#4CAF50]" />
+                  Rekap Nilai Semua MK
                 </Link>
                 <Link
                   href="/admin/periode"
                   className="neo-btn text-xs px-3 py-1.5 bg-black text-white font-black flex items-center gap-1.5 shrink-0 hover:bg-neutral-800"
                 >
-                  <CalendarRange className="w-3.5 h-3.5 text-[#4CAF50]" />
+                  <CalendarRange className="w-3.5 h-3.5 text-[#2196F3]" />
                   Periode Semester
                 </Link>
               </>
+            ) : (
+              <>
+                {/* Menu Asprak */}
+                <Link
+                  href="/praktikum"
+                  className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-[#2196F3]" />
+                  Pilihan Mata Kuliah
+                </Link>
+                <Link
+                  href="/praktikan"
+                  className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  Data Praktikan
+                </Link>
+                <Link
+                  href="/rekap-nilai"
+                  className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
+                >
+                  <Award className="w-3.5 h-3.5 text-amber-600" />
+                  Rekap Nilai Semester
+                </Link>
+              </>
             )}
-
-            {/* Modul Global & Rekap Nilai Legacy Navigation (Tetap tersedia) */}
-            <Link
-              href="/modul"
-              className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
-            >
-              <BookOpen className="w-3.5 h-3.5 text-[#2196F3]" />
-              Modul Praktikum
-            </Link>
-            <Link
-              href="/praktikan"
-              className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
-            >
-              <Users className="w-3.5 h-3.5" />
-              Data Praktikan
-            </Link>
-            <Link
-              href="/rekap-nilai"
-              className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
-            >
-              <Award className="w-3.5 h-3.5 text-amber-600" />
-              Rekap Nilai Semester
-            </Link>
           </div>
         </nav>
       </header>

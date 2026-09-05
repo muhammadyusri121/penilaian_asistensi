@@ -1,25 +1,32 @@
 import { Metadata } from "next";
 import { getSession } from "@/lib/security";
 import { redirect } from "next/navigation";
-import { getPendingUsersAction, getActiveAssistantsAction } from "@/features/admin/actions/admin.actions";
+import {
+  getPendingUsersAction,
+  getAllAssistantsAction,
+} from "@/features/admin/actions/admin.actions";
 import { PendingUsersTable } from "@/features/admin/components/pending-users-table";
+import { AssistantManager } from "@/features/admin/components/assistant-manager";
 import { UserCheck, ShieldAlert, Users } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Persetujuan Akun Asisten | Admin Lab",
-  description: "Antrean ACC dan verifikasi pendaftaran akun calon asisten praktikum",
+  title: "Manajemen & Persetujuan Akun Asprak | Admin Lab",
+  description: "Kelola akun asisten praktikum (CRUD) dan verifikasi pendaftaran akun baru",
 };
 
 export default async function PersetujuanAkunPage() {
   const session = await getSession();
   if (!session || session.role !== "ADMIN") {
-    redirect("/modul");
+    redirect("/praktikum");
   }
 
-  const [pendingUsers, activeAssistants] = await Promise.all([
+  const [pendingUsers, allAssistants] = await Promise.all([
     getPendingUsersAction(),
-    getActiveAssistantsAction(),
+    getAllAssistantsAction(),
   ]);
+
+  const activeCount = allAssistants.filter((a) => a.status === "ACTIVE").length;
+  const pendingCount = pendingUsers.length;
 
   return (
     <div className="space-y-8">
@@ -28,85 +35,55 @@ export default async function PersetujuanAkunPage() {
         <div>
           <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tight text-black flex items-center gap-3">
             <UserCheck className="w-8 h-8" />
-            <span>Persetujuan Akun Asisten (ACC)</span>
+            <span>Manajemen & Persetujuan Akun Asprak</span>
           </h1>
           <p className="text-xs md:text-sm font-bold text-neutral-600">
-            Tinjau dan aktifkan pendaftaran akun calon asisten praktikum sebelum mereka dapat login dan membimbing mahasiswa.
+            Kelola data akun asisten praktikum (tambah, edit profil, reset password, hapus) serta tinjau antrean persetujuan (ACC) pendaftar baru.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="neo-box-sm bg-[#FFEB3B] p-2.5 text-center min-w-[130px]">
-            <span className="text-[10px] font-black text-neutral-600 uppercase block">Menunggu ACC</span>
-            <span className="text-xl font-black font-mono-numbers">{pendingUsers.length}</span>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="neo-box-sm bg-white p-2.5 text-center min-w-[110px]">
+            <span className="text-[10px] font-black text-neutral-600 uppercase block">Total Asprak</span>
+            <span className="text-xl font-black font-mono-numbers">{allAssistants.length}</span>
           </div>
-          <div className="neo-box-sm bg-white p-2.5 text-center min-w-[130px]">
-            <span className="text-[10px] font-black text-neutral-600 uppercase block">Asisten Aktif</span>
-            <span className="text-xl font-black font-mono-numbers">{activeAssistants.length}</span>
+          <div className="neo-box-sm bg-[#4CAF50] text-black p-2.5 text-center min-w-[110px]">
+            <span className="text-[10px] font-black text-black uppercase block">Asisten Aktif</span>
+            <span className="text-xl font-black font-mono-numbers">{activeCount}</span>
+          </div>
+          <div className="neo-box-sm bg-[#FFEB3B] text-black p-2.5 text-center min-w-[110px]">
+            <span className="text-[10px] font-black text-neutral-800 uppercase block">Menunggu ACC</span>
+            <span className="text-xl font-black font-mono-numbers">{pendingCount}</span>
           </div>
         </div>
       </div>
 
-      {/* Antrean Pending */}
+      {/* Antrean Pending (Ditampilkan menonjol jika ada pendaftar baru yang menunggu ACC) */}
+      {pendingUsers.length > 0 && (
+        <div className="space-y-3 bg-[#FFF9F0] p-4 border-3 border-black">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black uppercase tracking-wider flex items-center gap-2 text-black">
+              <ShieldAlert className="w-4 h-4 text-[#FF5252]" />
+              <span>Antrean Pendaftaran Akun Baru ({pendingUsers.length})</span>
+            </h2>
+            <span className="neo-box-sm bg-amber-300 text-black text-[10px] px-2 py-0.5 font-black uppercase">
+              Perlu Tindakan
+            </span>
+          </div>
+          <PendingUsersTable users={pendingUsers} />
+        </div>
+      )}
+
+      {/* Master Data & CRUD Seluruh Akun Asisten Praktikum */}
       <div className="space-y-3">
-        <h2 className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4 text-[#FF5252]" />
-          <span>Antrean Pendaftaran Baru ({pendingUsers.length})</span>
-        </h2>
-        <PendingUsersTable users={pendingUsers} />
-      </div>
-
-      {/* Daftar Asisten Aktif */}
-      <div className="space-y-3 pt-4 border-t-3 border-black">
-        <h2 className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
-          <Users className="w-4 h-4 text-black" />
-          <span>Daftar Asisten Praktikum Aktif ({activeAssistants.length})</span>
-        </h2>
-
-        <div className="neo-box bg-white overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b-3 border-black bg-[#FFF9F0] text-xs font-black uppercase">
-                <th className="p-3 border-r-3 border-black w-12 text-center">No</th>
-                <th className="p-3 border-r-3 border-black">Nama Lengkap</th>
-                <th className="p-3 border-r-3 border-black">Username</th>
-                <th className="p-3 border-r-3 border-black">Email</th>
-                <th className="p-3 border-r-3 border-black text-center">MK Diampu</th>
-                <th className="p-3 border-r-3 border-black text-center">Praktikan</th>
-                <th className="p-3 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y-2 divide-neutral-200 text-xs font-medium">
-              {activeAssistants.map((ast, idx) => (
-                <tr key={ast.id} className="hover:bg-neutral-50">
-                  <td className="p-3 border-r-3 border-black font-mono font-bold text-center">
-                    {idx + 1}
-                  </td>
-                  <td className="p-3 border-r-3 border-black font-bold text-black">
-                    {ast.name}
-                  </td>
-                  <td className="p-3 border-r-3 border-black font-mono font-black text-[#2196F3]">
-                    {ast.username}
-                  </td>
-                  <td className="p-3 border-r-3 border-black text-neutral-600">
-                    {ast.email || "-"}
-                  </td>
-                  <td className="p-3 border-r-3 border-black font-mono font-black text-center">
-                    {ast._count.assignedCourses}
-                  </td>
-                  <td className="p-3 border-r-3 border-black font-mono font-black text-center">
-                    {ast._count.studentEnrollments}
-                  </td>
-                  <td className="p-3 text-center">
-                    <span className="neo-box-sm bg-[#4CAF50] text-black px-2 py-0.5 text-[10px] font-black uppercase">
-                      {ast.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="flex items-center justify-between border-b-2 border-dashed border-neutral-300 pb-2">
+          <h2 className="text-sm font-black uppercase tracking-wider flex items-center gap-2 text-black">
+            <Users className="w-4 h-4 text-black" />
+            <span>Daftar Seluruh Akun Asisten Praktikum</span>
+          </h2>
         </div>
+
+        <AssistantManager assistants={allAssistants as any} />
       </div>
     </div>
   );

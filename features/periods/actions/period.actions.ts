@@ -12,15 +12,30 @@ export async function ensureDefaultPeriod(): Promise<string> {
   const active = await prisma.academicPeriod.findFirst({
     where: { isActive: true },
   });
-  if (active) return active.id;
 
   const now = new Date();
   const nextThreeMonths = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
 
-  const created = await prisma.academicPeriod.create({
+  if (active) {
+    // Jika courseInputEnd sama dengan courseInputStart (karena default migrasi skema), perpanjang otomatis agar periode terbuka
+    if (new Date(active.courseInputEnd).getTime() <= new Date(active.courseInputStart).getTime()) {
+      await (prisma.academicPeriod.update as any)({
+        where: { id: active.id },
+        data: {
+          courseInputEnd: active.studentInputEnd,
+        },
+      });
+      active.courseInputEnd = active.studentInputEnd;
+    }
+    return active.id;
+  }
+
+  const created = await (prisma.academicPeriod.create as any)({
     data: {
       name: "Semester Gasal 2026/2027",
       isActive: true,
+      courseInputStart: now,
+      courseInputEnd: nextThreeMonths,
       studentInputStart: now,
       studentInputEnd: nextThreeMonths,
     },
@@ -77,10 +92,16 @@ export async function createPeriodAction(input: PeriodInput) {
         });
       }
 
-      await tx.academicPeriod.create({
+      await (tx.academicPeriod.create as any)({
         data: {
           name: data.name,
           isActive: data.isActive,
+          courseInputStart: data.courseInputStart
+            ? new Date(data.courseInputStart)
+            : new Date(data.studentInputStart),
+          courseInputEnd: data.courseInputEnd
+            ? new Date(data.courseInputEnd)
+            : new Date(data.studentInputEnd),
           studentInputStart: new Date(data.studentInputStart),
           studentInputEnd: new Date(data.studentInputEnd),
         },
@@ -126,9 +147,47 @@ export async function setActivePeriodAction(periodId: string) {
 }
 
 /**
+ * Update jadwal periode (buka/tutup klaim MK & input praktikan) - Khusus ADMIN
+ */
+export async function updatePeriodDatesAction(
+  periodId: string,
+  input: {
+    courseInputStart?: string;
+    courseInputEnd?: string;
+    studentInputStart?: string;
+    studentInputEnd?: string;
+  }
+) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { success: false, message: "Akses ditolak." };
+  }
+
+  try {
+    const updateData: any = {};
+    if (input.courseInputStart) updateData.courseInputStart = new Date(input.courseInputStart);
+    if (input.courseInputEnd) updateData.courseInputEnd = new Date(input.courseInputEnd);
+    if (input.studentInputStart) updateData.studentInputStart = new Date(input.studentInputStart);
+    if (input.studentInputEnd) updateData.studentInputEnd = new Date(input.studentInputEnd);
+
+    await (prisma.academicPeriod.update as any)({
+      where: { id: periodId },
+      data: updateData,
+    });
+
+    revalidatePath("/admin/periode");
+    revalidatePath("/praktikum");
+    return { success: true, message: "Jadwal periode berhasil diperbarui." };
+  } catch (error) {
+    console.error("updatePeriodDatesAction failed", error);
+    return { success: false, message: "Gagal memperbarui jadwal periode." };
+  }
+}
+
+/**
  * Validasi apakah jendela waktu penginputan praktikan saat ini sedang terbuka
  */
-export async function checkWindowAccessAction(windowType: "student" = "student"): Promise<{
+export async function checkWindowAccessAction(windowType: "student" | "course" = "student"): Promise<{
   allowed: boolean;
   reason?: string;
   periodName?: string;
@@ -147,20 +206,149 @@ export async function checkWindowAccessAction(windowType: "student" = "student")
   }
 
   const now = new Date();
+
+  if (windowType === "course") {
+    const courseStart = active.courseInputStart ? new Date(active.courseInputStart) : new Date(active.studentInputStart);
+    const courseEnd = active.courseInputEnd ? new Date(active.courseInputEnd) : new Date(active.studentInputEnd);
+
+    if (now < courseStart) {
+      return {
+        allowed: false,
+        reason: "Periode pengambilan mata kuliah belum dibuka.",
+        periodName: active.name,
+      };
+    }
+    if (now > courseEnd) {
+      return {
+        allowed: false,
+        reason: "Periode pengambilan mata kuliah sudah ditutup.",
+        periodName: active.name,
+      };
+    }
+    return { allowed: true, periodName: active.name };
+  }
+
   if (now < new Date(active.studentInputStart)) {
     return {
       allowed: false,
-      reason: `Periode input mahasiswa belum dibuka (Buka: ${active.studentInputStart.toLocaleDateString("id-ID")}).`,
+      reason: "Periode input mahasiswa belum dibuka.",
       periodName: active.name,
     };
   }
   if (now > new Date(active.studentInputEnd)) {
     return {
       allowed: false,
-      reason: `Periode input mahasiswa telah ditutup sejak ${active.studentInputEnd.toLocaleDateString("id-ID")}. Hubungi Koordinator Lab untuk pembukaan susulan.`,
+      reason: "Periode input mahasiswa telah ditutup. Hubungi Koordinator Lab untuk pembukaan susulan.",
       periodName: active.name,
     };
   }
 
   return { allowed: true, periodName: active.name };
 }
+
+/**
+ * Buka atau Tutup Jendela (Klaim MK atau Input Praktikan) secara instan
+ * Admin dapat menentukan tanggal & jam tutup otomatis (default: 7 hari dari sekarang)
+ */
+export async function togglePeriodWindowAction(
+  periodId: string,
+  windowType: "course" | "student",
+  action: "open" | "close",
+  autoCloseDate?: string
+) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { success: false, message: "Akses ditolak." };
+  }
+
+  try {
+    const period = await prisma.academicPeriod.findUnique({
+      where: { id: periodId },
+    });
+    if (!period) return { success: false, message: "Periode tidak ditemukan." };
+
+    const now = new Date();
+    const updateData: any = {};
+
+    if (action === "open") {
+      // Set start waktu ke 1 menit yang lalu agar langsung aktif seketika
+      const startDate = new Date(now.getTime() - 60 * 1000);
+      // Jika autoCloseDate disediakan, pakai itu, kalau tidak default 7 hari
+      const endDate = autoCloseDate
+        ? new Date(autoCloseDate)
+        : new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      if (windowType === "course") {
+        updateData.courseInputStart = startDate;
+        updateData.courseInputEnd = endDate;
+      } else {
+        updateData.studentInputStart = startDate;
+        updateData.studentInputEnd = endDate;
+      }
+    } else {
+      // Tutup langsung: set end waktu ke 1 detik yang lalu
+      const closedDate = new Date(now.getTime() - 1000);
+      if (windowType === "course") {
+        updateData.courseInputEnd = closedDate;
+      } else {
+        updateData.studentInputEnd = closedDate;
+      }
+    }
+
+    await (prisma.academicPeriod.update as any)({
+      where: { id: periodId },
+      data: updateData,
+    });
+
+    revalidatePath("/admin/periode");
+    revalidatePath("/praktikum");
+    return {
+      success: true,
+      message: `Jendela ${windowType === "course" ? "Klaim MK (Asprak)" : "Input Praktikan"} berhasil ${action === "open" ? "dibuka" : "ditutup"}.`,
+    };
+  } catch (error) {
+    console.error("togglePeriodWindowAction failed", error);
+    return { success: false, message: "Gagal mengubah status jendela." };
+  }
+}
+
+/**
+ * Sesuaikan waktu penutupan otomatis jendela periode
+ */
+export async function updateWindowAutoCloseAction(
+  periodId: string,
+  windowType: "course" | "student",
+  autoCloseDate: string
+) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { success: false, message: "Akses ditolak." };
+  }
+
+  try {
+    const updateData: any = {};
+    const endDate = new Date(autoCloseDate);
+
+    if (windowType === "course") {
+      updateData.courseInputEnd = endDate;
+    } else {
+      updateData.studentInputEnd = endDate;
+    }
+
+    await (prisma.academicPeriod.update as any)({
+      where: { id: periodId },
+      data: updateData,
+    });
+
+    revalidatePath("/admin/periode");
+    revalidatePath("/praktikum");
+    return {
+      success: true,
+      message: `Waktu tutup otomatis jendela ${windowType === "course" ? "Klaim MK (Asprak)" : "Input Praktikan"} berhasil diperbarui.`,
+    };
+  } catch (error) {
+    console.error("updateWindowAutoCloseAction failed", error);
+    return { success: false, message: "Gagal memperbarui waktu tutup otomatis." };
+  }
+}
+

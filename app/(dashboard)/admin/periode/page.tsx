@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default async function AdminPeriodePage() {
   const session = await getSession();
   if (!session || session.role !== "ADMIN") {
-    redirect("/modul");
+    redirect("/praktikum");
   }
 
   const periods = await getAllPeriodsAction();

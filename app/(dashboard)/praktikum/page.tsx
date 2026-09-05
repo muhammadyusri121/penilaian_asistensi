@@ -2,6 +2,7 @@ import { Metadata } from "next";
 import { getSession } from "@/lib/security";
 import { redirect } from "next/navigation";
 import { getCatalogCoursesAction } from "@/features/courses/actions/course.actions";
+import { getActivePeriodAction } from "@/features/periods/actions/period.actions";
 import { CourseCatalog } from "@/features/courses/components/course-catalog";
 import { BookOpen } from "lucide-react";
 
@@ -14,7 +15,10 @@ export default async function PraktikumPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const courses = await getCatalogCoursesAction();
+  const [courses, activePeriod] = await Promise.all([
+    getCatalogCoursesAction(),
+    getActivePeriodAction(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -29,7 +33,7 @@ export default async function PraktikumPage() {
         </p>
       </div>
 
-      <CourseCatalog courses={courses} userRole={session.role} />
+      <CourseCatalog courses={courses} userRole={session.role} periodInfo={activePeriod} />
     </div>
   );
 }

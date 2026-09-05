@@ -10,7 +10,11 @@ export const metadata = {
 export default async function LoginPage() {
   const session = await getSession();
   if (session) {
-    redirect("/modul");
+    if (session.role === "ADMIN") {
+      redirect("/admin/matakuliah");
+    } else {
+      redirect("/praktikum");
+    }
   }
 
   return (

@@ -18,6 +18,8 @@ export function CourseBuilderForm() {
   const [code, setCode] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [scheduleDay, setScheduleDay] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
   const [modules, setModules] = useState<ModuleInputRow[]>([
     { title: "Modul 1: Pengantar & Teori Dasar", description: "", isFinalReport: false },
     { title: "Modul 2: Implementasi Dasar", description: "", isFinalReport: false },
@@ -74,6 +76,8 @@ export function CourseBuilderForm() {
         code: code.trim(),
         title: title.trim(),
         description: description.trim() || undefined,
+        scheduleDay: scheduleDay.trim() || undefined,
+        scheduleTime: scheduleTime.trim() || undefined,
         modules: modules.map((m) => ({
           title: m.title.trim(),
           description: m.description.trim() || undefined,
@@ -98,22 +102,23 @@ export function CourseBuilderForm() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="neo-box bg-white p-6">
-        <div className="flex items-center gap-3 border-b-3 border-black pb-4 mb-6">
-          <div className="neo-box-sm bg-[#FFEB3B] p-2.5">
-            <BookOpen className="w-7 h-7 text-black" />
-          </div>
-          <div>
-            <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight text-black">
-              Buat Mata Kuliah Praktikum
-            </h1>
-            <p className="text-xs font-bold text-neutral-600 uppercase">
-              Master Kurikulum & Penyusunan Modul Laboratorium
-            </p>
-          </div>
+    <div className="neo-box bg-white p-6 md:p-8 max-w-4xl mx-auto space-y-6">
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="neo-box-sm bg-black text-[#FFEB3B] text-[10px] px-2 py-0.5 font-mono font-black uppercase flex items-center gap-1">
+            <BookOpen className="w-3.5 h-3.5" />
+            Admin Lab
+          </span>
         </div>
+        <h1 className="text-2xl font-black uppercase tracking-tight text-black">
+          Buat Mata Kuliah Praktikum Baru
+        </h1>
+        <p className="text-xs font-bold text-neutral-600">
+          Rancang silabus mata kuliah beserta modul-modul praktikum yang dapat diambil dan dinilai oleh asisten.
+        </p>
+      </div>
 
+      <div>
         {errorMsg && (
           <div className="neo-box-sm bg-[#FF5252] text-white p-3 mb-5 text-xs font-black uppercase">
             ⚠️ {errorMsg}
@@ -148,6 +153,39 @@ export function CourseBuilderForm() {
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Jadwal Hari & Jam Praktikum */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="course-day" className="block text-xs font-black uppercase tracking-wider mb-1.5 text-black">
+                Hari Pelaksanaan Praktikum
+              </label>
+              <select
+                id="course-day"
+                className="neo-input w-full p-2.5 text-sm font-medium text-black bg-white cursor-pointer"
+                value={scheduleDay}
+                onChange={(e) => setScheduleDay(e.target.value)}
+              >
+                <option value="">-- Pilih Hari (Opsional) --</option>
+                <option value="Senin">Senin</option>
+                <option value="Selasa">Selasa</option>
+                <option value="Rabu">Rabu</option>
+                <option value="Kamis">Kamis</option>
+                <option value="Jumat">Jumat</option>
+                <option value="Sabtu">Sabtu</option>
+                <option value="Minggu">Minggu</option>
+              </select>
+            </div>
+            <div>
+              <Input
+                id="course-time"
+                label="Jam Pelaksanaan Praktikum"
+                placeholder="cth: 08:00 - 10:30 WIB"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
               />
             </div>
           </div>

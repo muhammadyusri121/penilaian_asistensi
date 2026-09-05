@@ -192,10 +192,14 @@ export async function createStudentInCourseAction(
     return { success: false, message: "Data tidak valid: " + parsed.error.issues[0]?.message };
   }
 
-  const { nim, name, classGroup } = parsed.data;
+  const { nim, name, classGroup, assistantId } = parsed.data;
   const cleanNim = nim.trim();
   const cleanName = name.trim();
   const cleanClass = classGroup?.trim() || null;
+
+  // Tentukan assistantId: jika Admin dan menyediakan assistantId, gunakan pilihan Admin; selain itu userId pembuat
+  const targetAssistantId =
+    session.role === "ADMIN" && assistantId ? assistantId : session.userId;
 
   try {
     // 1. Cek apakah NIM sudah terdaftar di mata kuliah ini
@@ -216,7 +220,10 @@ export async function createStudentInCourseAction(
 
       await prisma.courseEnrollment.update({
         where: { id: existing.id },
-        data: { classGroup: cleanClass },
+        data: {
+          classGroup: cleanClass,
+          ...(session.role === "ADMIN" && assistantId ? { assistantId } : {}),
+        },
       });
       await prisma.student.update({
         where: { nim: cleanNim },
@@ -234,7 +241,7 @@ export async function createStudentInCourseAction(
           data: {
             courseId,
             studentNim: cleanNim,
-            assistantId: session.userId,
+            assistantId: targetAssistantId,
             classGroup: cleanClass,
           },
         });

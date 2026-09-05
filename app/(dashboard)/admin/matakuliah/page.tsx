@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getCatalogCoursesAction } from "@/features/courses/actions/course.actions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { BookOpen, Plus, Users, Layers, GraduationCap } from "lucide-react";
+import { BookOpen, Plus, Users, Layers, GraduationCap, Edit3, Award } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Master Mata Kuliah & Modul | Admin Lab",
@@ -67,6 +67,12 @@ export default async function AdminMataKuliahPage() {
                 </div>
 
                 <div className="p-4 space-y-3">
+                  {((course as any).scheduleDay || (course as any).scheduleTime) && (
+                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#E0F2FE] border-2 border-black text-xs font-black text-black">
+                      <span>🗓️ {(course as any).scheduleDay || "Hari ?"}</span>
+                      {(course as any).scheduleTime && <span>• ⏰ {(course as any).scheduleTime}</span>}
+                    </div>
+                  )}
                   <h3 className="text-lg font-black tracking-tight text-black line-clamp-1">
                     {course.title}
                   </h3>
@@ -116,11 +122,25 @@ export default async function AdminMataKuliahPage() {
                 </div>
               </div>
 
-              <div className="p-4 border-t-3 border-black bg-neutral-50 flex items-center justify-between">
-                <Link href={`/${course.id}/modul`} className="w-full">
-                  <Button variant="secondary" size="sm" className="w-full text-xs">
-                    Buka Ruang Kerja Modul
-                  </Button>
+              <div className="p-4 border-t-3 border-black bg-neutral-50 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Link href={`/${course.id}/praktikan`} className="flex-1">
+                    <Button variant="secondary" size="sm" className="w-full text-xs">
+                      Buka Ruang Kerja
+                    </Button>
+                  </Link>
+                  <Link href={`/admin/matakuliah/${course.id}/edit`}>
+                    <Button variant="secondary" size="sm" className="text-xs bg-yellow-300 hover:bg-yellow-400">
+                      <Edit3 className="w-3.5 h-3.5 mr-1" />
+                      Edit MK & Modul
+                    </Button>
+                  </Link>
+                </div>
+                <Link href={`/admin/rekap-nilai?courseId=${course.id}`} className="w-full">
+                  <button className="w-full neo-btn text-[11px] py-1 bg-white text-black font-black flex items-center justify-center gap-1 hover:bg-neutral-100">
+                    <Award className="w-3 h-3 text-amber-600" />
+                    Lihat Rekap Nilai MK Ini
+                  </button>
                 </Link>
               </div>
             </Card>

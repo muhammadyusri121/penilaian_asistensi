@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 export interface ActionResult<T = unknown> {
   success: boolean;
   message?: string;
+  role?: string;
   data?: T;
   errors?: Record<string, string[]>;
 }
@@ -150,6 +151,7 @@ export async function loginAction(rawInput: LoginInput): Promise<ActionResult> {
   return {
     success: true,
     message: "Login berhasil",
+    role: user.role,
   };
 }
 

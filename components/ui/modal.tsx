@@ -15,19 +15,29 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "lg" }: Mod
   const modalRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
 
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!isOpen) return;
 
     previouslyFocusedElementRef.current = document.activeElement as HTMLElement | null;
+    const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    // Pindahkan fokus ke modal saat terbuka
+    // Pindahkan fokus hanya saat pertama kali modal terbuka jika elemen saat ini belum berada di dalam modal
     const modalElement = modalRef.current;
-    if (modalElement) {
+    if (modalElement && !modalElement.contains(document.activeElement)) {
       const focusable = modalElement.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
       );
-      if (focusable.length > 0) {
+      // Utamakan fokus ke input pertama jika ada, bukan ke tombol close X
+      const firstInput = modalElement.querySelector<HTMLElement>('input:not([disabled]), select:not([disabled]), textarea:not([disabled])');
+      if (firstInput) {
+        firstInput.focus();
+      } else if (focusable.length > 0) {
         focusable[0]?.focus();
       } else {
         modalElement.focus();
@@ -36,7 +46,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "lg" }: Mod
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -67,11 +77,11 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "lg" }: Mod
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.body.style.overflow = "unset";
+      document.body.style.overflow = originalOverflow;
       window.removeEventListener("keydown", handleKeyDown);
       previouslyFocusedElementRef.current?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

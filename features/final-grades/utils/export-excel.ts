@@ -8,6 +8,7 @@ interface ExportSemesterData {
       nim: string;
       name: string;
       classGroup?: string | null;
+      assistant?: { name: string; username: string } | null;
     };
     attendanceScores: number[];
     moduleScores: number[];
@@ -30,11 +31,14 @@ interface ExportSemesterData {
  * Generate dan unduh file spreadsheet Excel (.xlsx) dengan struktur persis format resmi laboratorium
  */
 export function exportSemesterToExcel(data: ExportSemesterData, filename = "Rekap_Nilai_Praktikum.xlsx") {
+  const hasAssistant = data.students.some((s) => s.student.assistant);
+
   const headers = [
     "No",
     "NIM",
     "Nama Lengkap",
     "Kelas/Shift",
+    ...(hasAssistant ? ["Asisten Pembina"] : []),
     // Kehadiran 1..12
     ...Array.from({ length: 12 }, (_, i) => `P${i + 1}`),
     "Total Presensi (10%)",
@@ -60,6 +64,7 @@ export function exportSemesterToExcel(data: ExportSemesterData, filename = "Reka
       item.student.nim,
       item.student.name,
       item.student.classGroup || "-",
+      ...(hasAssistant ? [item.student.assistant?.name || "-"] : []),
       // 12 presensi
       ...item.attendanceScores,
       item.summary.attendanceScore,
@@ -89,6 +94,7 @@ export function exportSemesterToExcel(data: ExportSemesterData, filename = "Reka
     { wch: 15 }, // NIM
     { wch: 30 }, // Nama
     { wch: 15 }, // Kelas
+    ...(hasAssistant ? [{ wch: 20 }] : []),
     ...Array(12).fill({ wch: 6 }), // 12 presensi
     { wch: 18 }, // Total Presensi
     ...data.modules.map(() => ({ wch: 16 })), // Modul

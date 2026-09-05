@@ -44,11 +44,31 @@ export async function saveGradeAction(input: GradeInput): Promise<GradeActionRes
     return { success: false, message: "Data praktikan tidak terdaftar di mata kuliah modul ini." };
   }
 
-  if (session.role !== "ADMIN" && enrollment.assistantId !== session.userId) {
-    return {
-      success: false,
-      message: "Akses ditolak. Anda tidak berwenang untuk menilai praktikan ini.",
-    };
+  if (session.role !== "ADMIN") {
+    if (enrollment.assistantId !== session.userId) {
+      return {
+        success: false,
+        message: "Akses ditolak. Anda tidak berwenang untuk menilai praktikan ini.",
+      };
+    }
+
+    // Verifikasi apakah pengajuan mata kuliah ini sudah di-ACC oleh Admin
+    const assignment = await (prisma.courseAssistant.findUnique as any)({
+      where: {
+        courseId_assistantId: {
+          courseId: enrollment.courseId,
+          assistantId: session.userId,
+        },
+      },
+    });
+
+    const currentStatus = (assignment as any)?.status;
+    if (currentStatus && currentStatus !== "APPROVED") {
+      return {
+        success: false,
+        message: "Akses ditolak. Pengajuan mata kuliah ini belum disetujui (di-ACC) oleh Koordinator Lab. Anda baru dapat menilai setelah pengajuan disetujui.",
+      };
+    }
   }
 
   // Hitung subtotal dan total menggunakan pure function
@@ -155,6 +175,21 @@ export async function getModuleGradingDataAction(moduleId: string) {
   });
 
   if (!moduleInfo) return null;
+
+  if (session.role !== "ADMIN") {
+    const assignment = await (prisma.courseAssistant.findUnique as any)({
+      where: {
+        courseId_assistantId: {
+          courseId: moduleInfo.courseId,
+          assistantId: session.userId,
+        },
+      },
+    });
+    const currentStatus = (assignment as any)?.status;
+    if (currentStatus && currentStatus !== "APPROVED") {
+      return null;
+    }
+  }
 
   const studentWhere =
     session.role === "ADMIN"

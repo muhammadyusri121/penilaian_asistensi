@@ -6,15 +6,22 @@ import { useRouter } from "next/navigation";
 import { claimCourseAction, unclaimCourseAction } from "../actions/course.actions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { BookOpen, Check, Layers, Users, ExternalLink, AlertCircle } from "lucide-react";
+import { BookOpen, Check, Layers, Users, ExternalLink, AlertCircle, Clock, Lock } from "lucide-react";
 
 interface CatalogCourseItem {
   id: string;
   code: string;
   title: string;
   description: string | null;
-  academicPeriod: { name: string };
+  scheduleDay?: string | null;
+  scheduleTime?: string | null;
+  academicPeriod: {
+    name: string;
+    courseInputStart?: Date | string | null;
+    courseInputEnd?: Date | string | null;
+  };
   isClaimedByMe: boolean;
+  myProposalStatus?: string | null;
   modules: Array<{ id: string; title: string; orderIndex: number; isFinalReport: boolean }>;
   _count: {
     modules: number;
@@ -26,9 +33,51 @@ interface CatalogCourseItem {
 interface CourseCatalogProps {
   courses: CatalogCourseItem[];
   userRole: "ADMIN" | "ASISTEN";
+  periodInfo?: {
+    name: string;
+    courseInputStart?: Date | string | null;
+    courseInputEnd?: Date | string | null;
+  } | null;
 }
 
-export function CourseCatalog({ courses, userRole }: CourseCatalogProps) {
+function formatIndoDateTime(val?: Date | string | null) {
+  if (!val) return "-";
+  const date = new Date(val);
+  return new Intl.DateTimeFormat("id-ID", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function getRemainingDaysText(targetDate?: Date | string | null): string {
+  if (!targetDate) return "";
+  const target = new Date(targetDate).getTime();
+  const now = Date.now();
+  const diffMs = target - now;
+
+  if (diffMs <= 0) {
+    return "Telah ditutup";
+  }
+
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffHours < 24) {
+    if (diffHours <= 1) {
+      const diffMins = Math.max(1, Math.floor(diffMs / (1000 * 60)));
+      return `${diffMins} menit lagi`;
+    }
+    return `${diffHours} jam lagi`;
+  }
+
+  return `${diffDays} hari lagi`;
+}
+
+export function CourseCatalog({ courses, userRole, periodInfo }: CourseCatalogProps) {
   const router = useRouter();
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ id: string; success: boolean; message: string } | null>(null);
@@ -73,15 +122,57 @@ export function CourseCatalog({ courses, userRole }: CourseCatalogProps) {
     }
   }
 
+  const now = new Date();
+  const activeCourseEnd = periodInfo?.courseInputEnd || courses[0]?.academicPeriod?.courseInputEnd;
+  const activeCourseStart = periodInfo?.courseInputStart || courses[0]?.academicPeriod?.courseInputStart;
+  const isCourseOpen = Boolean(
+    activeCourseEnd &&
+    (!activeCourseStart || now >= new Date(activeCourseStart)) &&
+    now <= new Date(activeCourseEnd)
+  );
+
   return (
     <div className="space-y-6">
+      {/* Banner Estimasi Ditutup saat Periode Pengambilan MK Dibuka */}
+      {courses.length > 0 && isCourseOpen && activeCourseEnd && (
+        <div className="neo-box p-4 border-3 border-black flex items-center justify-between flex-wrap gap-3 bg-[#E0F2FE]">
+          <div className="flex items-center gap-2.5">
+            <Clock className="w-5 h-5 text-blue-700 shrink-0" />
+            <div>
+              <span className="text-xs font-black uppercase text-black block">
+                Periode Pengambilan Mata Kuliah Sedang Dibuka
+              </span>
+              <span className="text-xs font-medium text-neutral-700">
+                Batas akhir pemilihan s.d. {formatIndoDateTime(activeCourseEnd)}
+              </span>
+            </div>
+          </div>
+
+          <span className="neo-box-sm bg-amber-300 text-black px-3 py-1 text-xs font-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+            ⏳ Ditutup dalam {getRemainingDaysText(activeCourseEnd)}
+          </span>
+        </div>
+      )}
+
       {courses.length === 0 ? (
         <div className="neo-box bg-white p-12 text-center">
-          <BookOpen className="w-12 h-12 text-neutral-400 mx-auto mb-3" />
-          <h3 className="text-lg font-black uppercase">Belum Ada Mata Kuliah Praktikum</h3>
-          <p className="text-xs font-bold text-neutral-600">
-            Koordinator Laboratorium belum membuka mata kuliah praktikum untuk semester aktif.
-          </p>
+          {!isCourseOpen ? (
+            <>
+              <Lock className="w-12 h-12 text-neutral-400 mx-auto mb-3" />
+              <h3 className="text-lg font-black uppercase">Periode Pengambilan Mata Kuliah Telah Ditutup</h3>
+              <p className="text-xs font-bold text-neutral-600 max-w-md mx-auto">
+                Periode pengambilan mata kuliah praktikum telah ditutup. Anda belum memiliki mata kuliah yang diampu pada semester ini. Silakan hubungi Koordinator Laboratorium jika diperlukan pembukaan susulan.
+              </p>
+            </>
+          ) : (
+            <>
+              <BookOpen className="w-12 h-12 text-neutral-400 mx-auto mb-3" />
+              <h3 className="text-lg font-black uppercase">Belum Ada Mata Kuliah Praktikum</h3>
+              <p className="text-xs font-bold text-neutral-600">
+                Koordinator Laboratorium belum membuka mata kuliah praktikum untuk semester aktif.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -97,10 +188,28 @@ export function CourseCatalog({ courses, userRole }: CourseCatalogProps) {
                     </span>
 
                     {course.isClaimedByMe ? (
-                      <span className="neo-box-sm bg-[#4CAF50] text-black px-2 py-0.5 text-[10px] font-black uppercase flex items-center gap-1">
-                        <Check className="w-3 h-3" />
-                        Sedang Diampu
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {course.myProposalStatus === "APPROVED" && (
+                          <span className="neo-box-sm bg-[#4CAF50] text-black px-2 py-0.5 text-[10px] font-black uppercase flex items-center gap-1">
+                            <Check className="w-3 h-3" />
+                          </span>
+                        )}
+                        {course.myProposalStatus === "PENDING_APPROVAL" && (
+                          <span className="neo-box-sm bg-amber-400 text-black px-2 py-0.5 text-[10px] font-black uppercase flex items-center gap-1">
+                            Menunggu ACC
+                          </span>
+                        )}
+                        {course.myProposalStatus === "REJECTED" && (
+                          <span className="neo-box-sm bg-[#FF5252] text-white px-2 py-0.5 text-[10px] font-black uppercase flex items-center gap-1">
+                            Revisi
+                          </span>
+                        )}
+                        {(!course.myProposalStatus || course.myProposalStatus === "DRAFT") && (
+                          <span className="neo-box-sm bg-[#FFEB3B] text-black px-2 py-0.5 text-[10px] font-black uppercase flex items-center gap-1">
+                            Draft
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-xs font-bold text-neutral-500 uppercase">
                         {course.academicPeriod.name}
@@ -109,6 +218,12 @@ export function CourseCatalog({ courses, userRole }: CourseCatalogProps) {
                   </div>
 
                   <div className="p-4 space-y-3">
+                    {(course.scheduleDay || course.scheduleTime) && (
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#E0F2FE] border-2 border-black text-xs font-black text-black">
+                        <span>🗓️ {course.scheduleDay || "Hari ?"}</span>
+                        {course.scheduleTime && <span>• ⏰ {course.scheduleTime}</span>}
+                      </div>
+                    )}
                     <h3 className="text-lg font-black tracking-tight text-black line-clamp-1">
                       {course.title}
                     </h3>
@@ -158,9 +273,8 @@ export function CourseCatalog({ courses, userRole }: CourseCatalogProps) {
 
                     {feedback?.id === course.id && (
                       <div
-                        className={`neo-box-sm p-2 text-xs font-black ${
-                          feedback.success ? "bg-[#4CAF50] text-black" : "bg-[#FF5252] text-white"
-                        }`}
+                        className={`neo-box-sm p-2 text-xs font-black ${feedback.success ? "bg-[#4CAF50] text-black" : "bg-[#FF5252] text-white"
+                          }`}
                       >
                         {feedback.message}
                       </div>
@@ -177,13 +291,14 @@ export function CourseCatalog({ courses, userRole }: CourseCatalogProps) {
                           Buka Ruang Praktikum
                         </Button>
                       </Link>
-                      {userRole !== "ADMIN" && (
+                      {userRole !== "ADMIN" && course.myProposalStatus !== "APPROVED" && (
                         <Button
                           variant="ghost"
                           size="sm"
                           className="text-xs text-neutral-600 hover:text-red-600"
                           onClick={() => handleUnclaim(course.id)}
                           disabled={isProcessing}
+                          title="Batalkan pengambilan mata kuliah ini"
                         >
                           Batal
                         </Button>

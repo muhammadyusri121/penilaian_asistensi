@@ -19,6 +19,7 @@ interface SemesterTableViewProps {
         nim: string;
         name: string;
         classGroup?: string | null;
+        assistant?: { name: string; username: string } | null;
       };
       attendanceScores: number[];
       moduleScores: number[];
@@ -58,7 +59,8 @@ export function SemesterTableView({ data, courseId }: SemesterTableViewProps) {
     return (
       item.student.nim.toLowerCase().includes(q) ||
       item.student.name.toLowerCase().includes(q) ||
-      (item.student.classGroup && item.student.classGroup.toLowerCase().includes(q))
+      (item.student.classGroup && item.student.classGroup.toLowerCase().includes(q)) ||
+      (item.student.assistant && item.student.assistant.name.toLowerCase().includes(q))
     );
   });
 
@@ -251,7 +253,14 @@ export function SemesterTableView({ data, courseId }: SemesterTableViewProps) {
                         {s.nim}
                       </td>
                       <td className="p-2 border-r border-neutral-300 font-sans font-bold text-black">
-                        {s.name}
+                        <div>{s.name}</div>
+                        {s.assistant && (
+                          <div className="text-[10px] font-mono font-medium text-neutral-600 mt-0.5">
+                            <span className="inline-block bg-neutral-100 border border-neutral-300 px-1 py-0.2 rounded text-[9px] font-bold text-neutral-700">
+                              Asprak: {s.assistant.name}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* 12 Presensi */}

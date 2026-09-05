@@ -2,9 +2,29 @@
 
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/security";
-import { createCourseSchema, CreateCourseInput } from "../schemas/course.schema";
-import { getActivePeriodAction } from "@/features/periods/actions/period.actions";
+import {
+  createCourseSchema,
+  CreateCourseInput,
+  updateCourseSchema,
+  UpdateCourseInput,
+} from "../schemas/course.schema";
+import {
+  getActivePeriodAction,
+  checkWindowAccessAction,
+} from "@/features/periods/actions/period.actions";
 import { revalidatePath } from "next/cache";
+
+let hasEnsuredScheduleColumns = false;
+async function ensureScheduleColumns() {
+  if (hasEnsuredScheduleColumns) return;
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Course" ADD COLUMN IF NOT EXISTS "scheduleDay" TEXT;`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Course" ADD COLUMN IF NOT EXISTS "scheduleTime" TEXT;`);
+    hasEnsuredScheduleColumns = true;
+  } catch (err) {
+    console.warn("ensureScheduleColumns notice:", err);
+  }
+}
 
 /**
  * Otomatis seed contoh Mata Kuliah Praktikum & Modul jika database masih kosong
@@ -111,7 +131,7 @@ export async function createCourseByAdminAction(input: CreateCourseInput) {
     return { success: false, message: parsed.error.issues[0]?.message || "Validasi data gagal" };
   }
 
-  const { code, title, description, modules } = parsed.data;
+  const { code, title, description, scheduleDay, scheduleTime, modules } = parsed.data;
 
   try {
     const course = await prisma.$transaction(async (tx) => {
@@ -124,6 +144,19 @@ export async function createCourseByAdminAction(input: CreateCourseInput) {
           creatorId: session.userId,
         },
       });
+
+      if (scheduleDay || scheduleTime) {
+        try {
+          await tx.$executeRawUnsafe(
+            `UPDATE "Course" SET "scheduleDay" = $1, "scheduleTime" = $2 WHERE id = $3`,
+            scheduleDay?.trim() || null,
+            scheduleTime?.trim() || null,
+            createdCourse.id
+          );
+        } catch (e) {
+          console.warn("Could not save schedule columns", e);
+        }
+      }
 
       for (let i = 0; i < modules.length; i++) {
         const mod = modules[i];
@@ -149,15 +182,152 @@ export async function createCourseByAdminAction(input: CreateCourseInput) {
       message: `Mata kuliah ${title} dengan ${modules.length} modul berhasil dibuat.`,
       courseId: course.id,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("createCourseByAdminAction failed", error);
-    return { success: false, message: "Gagal menyimpan mata kuliah praktikum." };
+    return { success: false, message: error?.message || "Gagal menyimpan mata kuliah praktikum." };
+  }
+}
+
+/**
+ * Edit Nama Mata Kuliah dan Judul Modul (Khusus ADMIN)
+ */
+export async function updateCourseByAdminAction(courseId: string, input: UpdateCourseInput) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { success: false, message: "Hanya Koordinator Lab (Admin) yang berhak mengedit mata kuliah." };
+  }
+
+  await ensureScheduleColumns();
+
+  const parsed = updateCourseSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, message: parsed.error.issues[0]?.message || "Validasi data gagal" };
+  }
+
+  const { code, title, description, scheduleDay, scheduleTime, modules } = parsed.data;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 1. Update detail Course (hanya field standar Prisma untuk mencegah PrismaClientValidationError)
+      await tx.course.update({
+        where: { id: courseId },
+        data: {
+          code: code.trim(),
+          title: title.trim(),
+          description: description?.trim() || null,
+        },
+      });
+
+      // 2. Update jadwal hari & jam via raw SQL langsung ke database
+      try {
+        await tx.$executeRawUnsafe(
+          `UPDATE "Course" SET "scheduleDay" = $1, "scheduleTime" = $2 WHERE id = $3`,
+          scheduleDay?.trim() || null,
+          scheduleTime?.trim() || null,
+          courseId
+        );
+      } catch (e) {
+        console.warn("Could not update schedule columns", e);
+      }
+
+      // 3. Ambil modul-modul yang saat ini ada di DB
+      const existingModules = await tx.module.findMany({
+        where: { courseId },
+      });
+
+      const incomingModuleIds = new Set(modules.filter((m) => m.id).map((m) => m.id as string));
+
+      // Hapus modul yang tidak ada lagi di daftar baru (jika tidak memiliki nilai)
+      for (const exMod of existingModules) {
+        if (!incomingModuleIds.has(exMod.id)) {
+          const submissionCount = await tx.submission.count({
+            where: { moduleId: exMod.id },
+          });
+          if (submissionCount === 0) {
+            await tx.module.delete({ where: { id: exMod.id } });
+          }
+        }
+      }
+
+      // Upsert/Update tiap modul dengan orderIndex baru
+      for (let i = 0; i < modules.length; i++) {
+        const mod = modules[i];
+        if (mod.id) {
+          await tx.module.update({
+            where: { id: mod.id },
+            data: {
+              orderIndex: i + 1,
+              title: mod.title.trim(),
+              description: mod.description?.trim() || null,
+              isFinalReport: mod.isFinalReport,
+            },
+          });
+        } else {
+          await tx.module.create({
+            data: {
+              courseId,
+              orderIndex: i + 1,
+              title: mod.title.trim(),
+              description: mod.description?.trim() || null,
+              isFinalReport: mod.isFinalReport,
+            },
+          });
+        }
+      }
+    });
+
+    revalidatePath("/admin/matakuliah");
+    revalidatePath(`/admin/matakuliah/${courseId}/edit`);
+    revalidatePath("/praktikum");
+    revalidatePath(`/${courseId}/modul`);
+
+    return {
+      success: true,
+      message: `Mata kuliah ${title} dan daftar modul berhasil diperbarui.`,
+    };
+  } catch (error: any) {
+    console.error("updateCourseByAdminAction failed", error);
+    return { success: false, message: error?.message || "Gagal memperbarui data mata kuliah." };
+  }
+}
+
+/**
+ * Hapus Mata Kuliah Praktikum (Khusus ADMIN)
+ */
+export async function deleteCourseByAdminAction(courseId: string) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { success: false, message: "Akses ditolak." };
+  }
+
+  try {
+    const enrollmentCount = await prisma.courseEnrollment.count({
+      where: { courseId },
+    });
+
+    if (enrollmentCount > 0) {
+      return {
+        success: false,
+        message: `Mata kuliah tidak dapat dihapus karena masih memiliki ${enrollmentCount} data pendaftaran mahasiswa.`,
+      };
+    }
+
+    await prisma.course.delete({
+      where: { id: courseId },
+    });
+
+    revalidatePath("/admin/matakuliah");
+    revalidatePath("/praktikum");
+    return { success: true, message: "Mata kuliah berhasil dihapus." };
+  } catch (error) {
+    console.error("deleteCourseByAdminAction failed", error);
+    return { success: false, message: "Gagal menghapus mata kuliah." };
   }
 }
 
 /**
  * Dapatkan katalog seluruh mata kuliah praktikum di periode aktif
- * Menandai apakah pengguna saat ini sudah mengampu mata kuliah tersebut
+ * Menandai status pengajuan/pengampuan pengguna saat ini
  */
 export async function getCatalogCoursesAction() {
   const session = await getSession();
@@ -172,7 +342,7 @@ export async function getCatalogCoursesAction() {
     where: { academicPeriodId: activePeriod.id },
     orderBy: { code: "asc" },
     include: {
-      academicPeriod: { select: { name: true } },
+      academicPeriod: { select: { name: true, courseInputStart: true, courseInputEnd: true, studentInputStart: true, studentInputEnd: true } },
       creator: { select: { name: true, username: true } },
       assistants: {
         include: {
@@ -192,22 +362,67 @@ export async function getCatalogCoursesAction() {
     },
   });
 
-  return courses.map((c) => {
-    const isClaimedByMe = c.assistants.some((a) => a.assistantId === session.userId);
+  await ensureScheduleColumns();
+  const scheduleMap = new Map<string, { scheduleDay: string | null; scheduleTime: string | null }>();
+  try {
+    const rawSchedules = await prisma.$queryRawUnsafe<
+      Array<{ id: string; scheduleDay: string | null; scheduleTime: string | null }>
+    >(`SELECT id, "scheduleDay", "scheduleTime" FROM "Course" WHERE "academicPeriodId" = $1`, activePeriod.id);
+    rawSchedules.forEach((r) => scheduleMap.set(r.id, { scheduleDay: r.scheduleDay, scheduleTime: r.scheduleTime }));
+  } catch (e) {
+    // ignore
+  }
+
+  const now = new Date();
+  const courseStart = activePeriod.courseInputStart
+    ? new Date(activePeriod.courseInputStart)
+    : new Date(activePeriod.studentInputStart);
+  const courseEnd = activePeriod.courseInputEnd
+    ? new Date(activePeriod.courseInputEnd)
+    : new Date(activePeriod.studentInputEnd);
+  const isCourseClaimOpen = now >= courseStart && now <= courseEnd;
+
+  let mappedCourses = courses.map((c) => {
+    const myAssignment = c.assistants.find((a) => a.assistantId === session.userId);
+    const isClaimedByMe = !!myAssignment;
+    const myProposalStatus = (myAssignment as any)?.status || null;
+    const sched = scheduleMap.get(c.id);
     return {
       ...c,
+      scheduleDay: sched?.scheduleDay ?? (c as any).scheduleDay ?? null,
+      scheduleTime: sched?.scheduleTime ?? (c as any).scheduleTime ?? null,
       isClaimedByMe,
+      myProposalStatus,
     };
   });
+
+  // Jika user adalah Asprak dan periode pengambilan sudah ditutup,
+  // sembunyikan mata kuliah yang belum diambil oleh asprak ini
+  if (session.role !== "ADMIN" && !isCourseClaimOpen) {
+    mappedCourses = mappedCourses.filter((c) => c.isClaimedByMe);
+  }
+
+  return mappedCourses;
 }
 
 /**
- * Asprak Mengambil / Memilih Mata Kuliah untuk Diampu
+ * Asprak Mengambil / Memilih Mata Kuliah untuk Diampu (Status Awal: DRAFT)
  */
 export async function claimCourseAction(courseId: string) {
   const session = await getSession();
   if (!session) {
     return { success: false, message: "Silakan login terlebih dahulu." };
+  }
+
+  // Cek jendela waktu pengambilan mata kuliah
+  if (session.role !== "ADMIN") {
+    const windowCheck = await checkWindowAccessAction("course");
+    if (!windowCheck.allowed) {
+      return {
+        success: false,
+        message: windowCheck.reason || "Periode pengambilan mata kuliah sudah ditutup.",
+      };
+    }
   }
 
   try {
@@ -221,27 +436,230 @@ export async function claimCourseAction(courseId: string) {
     });
 
     if (existing) {
-      return { success: true, message: "Anda sudah mengampu mata kuliah ini." };
+      return { success: true, message: "Anda sudah memilih mata kuliah ini." };
     }
 
-    await prisma.courseAssistant.create({
+    await (prisma.courseAssistant.create as any)({
       data: {
         courseId,
         assistantId: session.userId,
+        status: "DRAFT",
       },
     });
 
     revalidatePath("/praktikum");
-    revalidatePath(`/admin/matakuliah`);
+    revalidatePath("/admin/matakuliah");
 
     return {
       success: true,
-      message: "Berhasil mengambil mata kuliah praktikum. Ruang kerja telah dibuka untuk Anda.",
+      message: "Berhasil mengambil mata kuliah praktikum. Silakan input mahasiswa binaan Anda.",
     };
   } catch (error) {
     console.error("claimCourseAction failed", error);
     return { success: false, message: "Gagal mengambil mata kuliah." };
   }
+}
+
+/**
+ * Asprak Mengajukan (Submit Proposal) Mata Kuliah & Daftar Praktikan ke Admin
+ */
+export async function submitCourseProposalAction(courseId: string) {
+  const session = await getSession();
+  if (!session) {
+    return { success: false, message: "Silakan login terlebih dahulu." };
+  }
+
+  try {
+    const assignment = await prisma.courseAssistant.findUnique({
+      where: {
+        courseId_assistantId: {
+          courseId,
+          assistantId: session.userId,
+        },
+      },
+    });
+
+    if (!assignment) {
+      return { success: false, message: "Anda belum mengambil mata kuliah ini." };
+    }
+
+    // Pastikan asprak sudah memasukkan minimal 1 praktikan binaan
+    const studentCount = await prisma.courseEnrollment.count({
+      where: {
+        courseId,
+        assistantId: session.userId,
+      },
+    });
+
+    if (studentCount === 0) {
+      return {
+        success: false,
+        message: "Anda belum memasukkan data mahasiswa praktikan binaan. Harap tambahkan praktikan terlebih dahulu sebelum mengajukan.",
+      };
+    }
+
+    await (prisma.courseAssistant.update as any)({
+      where: {
+        courseId_assistantId: {
+          courseId,
+          assistantId: session.userId,
+        },
+      },
+      data: {
+        status: "PENDING_APPROVAL",
+        submittedAt: new Date(),
+      },
+    });
+
+    revalidatePath("/praktikum");
+    revalidatePath(`/${courseId}/praktikan`);
+    revalidatePath("/admin/pengajuan-matakuliah");
+
+    return {
+      success: true,
+      message: "Mata kuliah dan daftar mahasiswa binaan berhasil diajukan ke Koordinator Lab (Menunggu ACC).",
+    };
+  } catch (error) {
+    console.error("submitCourseProposalAction failed", error);
+    return { success: false, message: "Gagal mengajukan mata kuliah." };
+  }
+}
+
+/**
+ * Dapatkan status pengajuan mata kuliah asisten saat ini
+ */
+export async function getMyCourseProposalAction(courseId: string) {
+  const session = await getSession();
+  if (!session) return null;
+
+  try {
+    const ca = await (prisma.courseAssistant.findUnique as any)({
+      where: {
+        courseId_assistantId: {
+          courseId,
+          assistantId: session.userId,
+        },
+      },
+    });
+
+    if (!ca) return null;
+
+    return {
+      status: (ca as any).status || "APPROVED",
+      submittedAt: (ca as any).submittedAt || null,
+      approvedAt: (ca as any).approvedAt || null,
+      notes: (ca as any).notes || null,
+      assignedAt: ca.assignedAt || new Date(),
+    };
+  } catch (error) {
+    console.warn("getMyCourseProposalAction error:", error);
+    return null;
+  }
+}
+
+
+/**
+ * Admin Meng-ACC (Menyetujui) Pengajuan Mata Kuliah & Praktikan dari Asprak
+ */
+export async function approveCourseProposalAction(courseId: string, assistantId: string) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { success: false, message: "Hanya Koordinator Lab (Admin) yang berhak menyetujui pengajuan." };
+  }
+
+  try {
+    await (prisma.courseAssistant.update as any)({
+      where: {
+        courseId_assistantId: {
+          courseId,
+          assistantId,
+        },
+      },
+      data: {
+        status: "APPROVED",
+        approvedAt: new Date(),
+      },
+    });
+
+    revalidatePath("/admin/pengajuan-matakuliah");
+    revalidatePath("/admin/matakuliah");
+    revalidatePath("/praktikum");
+    return { success: true, message: "Pengajuan mata kuliah dan praktikan berhasil di-ACC (Disetujui)." };
+  } catch (error) {
+    console.error("approveCourseProposalAction failed", error);
+    return { success: false, message: "Gagal menyetujui pengajuan." };
+  }
+}
+
+/**
+ * Admin Menolak / Meminta Revisi Pengajuan Mata Kuliah & Praktikan
+ */
+export async function rejectCourseProposalAction(courseId: string, assistantId: string, notes?: string) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { success: false, message: "Hanya Koordinator Lab (Admin) yang berhak menolak pengajuan." };
+  }
+
+  try {
+    await (prisma.courseAssistant.update as any)({
+      where: {
+        courseId_assistantId: {
+          courseId,
+          assistantId,
+        },
+      },
+      data: {
+        status: "REJECTED",
+        notes: notes || null,
+      },
+    });
+
+    revalidatePath("/admin/pengajuan-matakuliah");
+    revalidatePath("/praktikum");
+    return { success: true, message: "Pengajuan mata kuliah dikembalikan untuk revisi." };
+  } catch (error) {
+    console.error("rejectCourseProposalAction failed", error);
+    return { success: false, message: "Gagal memproses penolakan pengajuan." };
+  }
+}
+
+/**
+ * Dapatkan seluruh daftar pengajuan mata kuliah & praktikan untuk Admin
+ */
+export async function getAllCourseProposalsAction() {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") return [];
+
+  const proposals = await prisma.courseAssistant.findMany({
+    orderBy: { assignedAt: "desc" },
+    include: {
+      course: {
+        select: { id: true, code: true, title: true },
+      },
+      assistant: {
+        select: { id: true, name: true, username: true, email: true },
+      },
+    },
+  });
+
+  // Hitung jumlah praktikan yang dibina oleh asprak ini di course terkait
+  const enriched = await Promise.all(
+    proposals.map(async (p) => {
+      const studentCount = await prisma.courseEnrollment.count({
+        where: {
+          courseId: p.courseId,
+          assistantId: p.assistantId,
+        },
+      });
+
+      return {
+        ...p,
+        studentCount,
+      };
+    })
+  );
+
+  return enriched;
 }
 
 /**
@@ -254,7 +672,29 @@ export async function unclaimCourseAction(courseId: string) {
   }
 
   try {
-    // Cek apakah asprak sudah memiliki mahasiswa binaan di MK ini
+    // 1. Cek status pengajuan mata kuliah
+    const assignment = await prisma.courseAssistant.findUnique({
+      where: {
+        courseId_assistantId: {
+          courseId,
+          assistantId: session.userId,
+        },
+      },
+    });
+
+    if (!assignment) {
+      return { success: false, message: "Anda tidak terdaftar mengampu mata kuliah ini." };
+    }
+
+    // Jika sudah di-ACC (APPROVED), asprak tidak dapat membatalkan mata kuliah
+    if (session.role !== "ADMIN" && (assignment as any).status === "APPROVED") {
+      return {
+        success: false,
+        message: "Mata kuliah praktikum ini telah disetujui (di-ACC) oleh Koordinator Lab dan tidak dapat dibatalkan.",
+      };
+    }
+
+    // 2. Cek apakah asprak masih memiliki mahasiswa binaan di MK ini
     const enrolledStudentsCount = await prisma.courseEnrollment.count({
       where: {
         courseId,
@@ -265,7 +705,7 @@ export async function unclaimCourseAction(courseId: string) {
     if (enrolledStudentsCount > 0) {
       return {
         success: false,
-        message: `Tidak dapat membatalkan mata kuliah karena Anda masih memiliki ${enrolledStudentsCount} mahasiswa binaan. Pindahkan mahasiswa terlebih dahulu.`,
+        message: `Tidak dapat membatalkan mata kuliah karena Anda masih memiliki ${enrolledStudentsCount} mahasiswa binaan. Pindahkan atau hapus praktikan terlebih dahulu.`,
       };
     }
 
@@ -312,6 +752,18 @@ export async function getCourseByIdAction(courseId: string) {
   });
 
   if (!course) return null;
+
+  try {
+    const raw = await prisma.$queryRawUnsafe<
+      Array<{ scheduleDay: string | null; scheduleTime: string | null }>
+    >(`SELECT "scheduleDay", "scheduleTime" FROM "Course" WHERE id = $1`, courseId);
+    if (raw && raw[0]) {
+      (course as any).scheduleDay = raw[0].scheduleDay ?? (course as any).scheduleDay ?? null;
+      (course as any).scheduleTime = raw[0].scheduleTime ?? (course as any).scheduleTime ?? null;
+    }
+  } catch (e) {
+    // ignore
+  }
 
   if (session.role !== "ADMIN") {
     const isCreator = course.creatorId === session.userId;

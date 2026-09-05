@@ -217,11 +217,16 @@ export function StudentManager({ initialStudents, courseId }: StudentManagerProp
           )}
 
           <Input
-            label="NIM Mahasiswa"
+            label="NIM Mahasiswa (Hanya Angka)"
             required
+            inputMode="numeric"
+            pattern="[0-9]*"
             placeholder="Contoh: 210411100012"
             value={nim}
-            onChange={(e) => setNim(e.target.value)}
+            onChange={(e) => {
+              const numericOnly = e.target.value.replace(/\D/g, "");
+              setNim(numericOnly);
+            }}
           />
 
           <Input
