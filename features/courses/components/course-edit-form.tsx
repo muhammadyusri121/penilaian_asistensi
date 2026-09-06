@@ -2,11 +2,13 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { updateCourseByAdminAction } from "../actions/course.actions";
+import { updateCourseByAdminAction, deleteCourseByAdminAction } from "../actions/course.actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CaptchaDeleteModal } from "@/components/ui/captcha-delete-modal";
 import { Plus, Trash2, BookOpen, Layers, CheckCircle2, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { deleteModuleAction } from "@/features/modules/actions/module.actions";
 import {
   CourseWeightsEditor,
   CourseWeights,
@@ -81,12 +83,24 @@ export function CourseEditForm({ course }: CourseEditFormProps) {
     ]);
   }
 
-  function removeModuleRow(index: number) {
+  // Delete Course Modal State
+  const [showDeleteCourseModal, setShowDeleteCourseModal] = useState(false);
+
+  // Delete Module Modal State
+  const [modToDelete, setModToDelete] = useState<{ index: number; mod: ModuleEditRow } | null>(null);
+
+  function handleRequestRemoveModule(index: number) {
     if (modules.length <= 1) {
-      alert("Mata kuliah harus memiliki minimal 1 modul!");
+      setErrorMsg("Mata kuliah harus memiliki minimal 1 modul!");
       return;
     }
-    setModules(modules.filter((_, idx) => idx !== index));
+
+    const targetMod = modules[index];
+    if (targetMod.id) {
+      setModToDelete({ index, mod: targetMod });
+    } else {
+      setModules(modules.filter((_, idx) => idx !== index));
+    }
   }
 
   function updateModule(index: number, field: keyof ModuleEditRow, value: unknown) {
@@ -335,9 +349,9 @@ export function CourseEditForm({ course }: CourseEditFormProps) {
 
                     <button
                       type="button"
-                      onClick={() => removeModuleRow(idx)}
+                      onClick={() => handleRequestRemoveModule(idx)}
                       disabled={modules.length <= 1}
-                      title="Hapus baris modul ini"
+                      title="Hapus modul ini"
                       className="p-1.5 neo-box-sm bg-red-100 text-red-700 hover:bg-red-200 border border-black disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -348,16 +362,97 @@ export function CourseEditForm({ course }: CourseEditFormProps) {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t-2 border-neutral-200">
-            <Link href="/admin/matakuliah" className="neo-btn px-4 py-2 bg-neutral-200 text-black text-xs font-black">
-              Batal
-            </Link>
-            <Button type="submit" variant="primary" size="md" disabled={loading}>
-              {loading ? "Menyimpan Perubahan..." : "Simpan Perubahan Mata Kuliah"}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t-2 border-neutral-200">
+            <Button
+              type="button"
+              variant="danger"
+              size="md"
+              onClick={() => setShowDeleteCourseModal(true)}
+              className="bg-[#FF5252] text-white hover:bg-red-700"
+            >
+              <Trash2 className="w-4 h-4 mr-1.5" />
+              Hapus Mata Kuliah Ini
             </Button>
+
+            <div className="flex items-center gap-3 ml-auto">
+              <Link href="/admin/matakuliah" className="neo-btn px-4 py-2 bg-neutral-200 text-black text-xs font-black">
+                Batal
+              </Link>
+              <Button type="submit" variant="primary" size="md" disabled={loading}>
+                {loading ? "Menyimpan Perubahan..." : "Simpan Perubahan Mata Kuliah"}
+              </Button>
+            </div>
           </div>
         </form>
       </div>
+
+      {/* MODAL KONFIRMASI HAPUS MODUL DENGAN CAPTCHA */}
+      {modToDelete?.mod.id && (
+        <CaptchaDeleteModal
+          isOpen={!!modToDelete}
+          onClose={() => setModToDelete(null)}
+          title="Konfirmasi Hapus Modul"
+          action="DELETE_MODULE"
+          targetId={modToDelete.mod.id}
+          confirmButtonText="Ya, Hapus Modul Ini"
+          targetDescription={
+            <p>
+              Apakah Anda yakin ingin menghapus{" "}
+              <span className="font-black underline">{modToDelete.mod.title}</span>?
+            </p>
+          }
+          warningNotice={
+            <>
+              Seluruh riwayat tugas pengumpulan mahasiswa, file yang telah diunggah, dan lembar nilai
+              asistensi untuk modul ini akan <span className="font-black underline">DIHAPUS PERMANEN</span>.
+            </>
+          }
+          onConfirm={(token, input) =>
+            deleteModuleAction(modToDelete.mod.id!, token, input)
+          }
+          onSuccess={(message) => {
+            setModules((prev) => prev.filter((_, idx) => idx !== modToDelete.index));
+            setModToDelete(null);
+            setSuccessMsg(message);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {/* MODAL KONFIRMASI HAPUS MATA KULIAH DENGAN CAPTCHA */}
+      {showDeleteCourseModal && (
+        <CaptchaDeleteModal
+          isOpen={showDeleteCourseModal}
+          onClose={() => setShowDeleteCourseModal(false)}
+          title="Konfirmasi Hapus Mata Kuliah"
+          action="DELETE_COURSE"
+          targetId={course.id}
+          confirmButtonText="Ya, Hapus Mata Kuliah"
+          targetDescription={
+            <p>
+              Apakah Anda yakin ingin menghapus mata kuliah{" "}
+              <span className="font-black underline">
+                {course.code} - {course.title}
+              </span>
+              ?
+            </p>
+          }
+          warningNotice={
+            <>
+              Seluruh modul praktikum ({modules.length} modul), tugas praktikan, file pengumpulan,
+              presensi, soal pretest, dan nilai asistensi dalam mata kuliah ini akan{" "}
+              <span className="font-black underline">DIHAPUS PERMANEN</span> dan tidak dapat dipulihkan.
+            </>
+          }
+          onConfirm={(token, input) =>
+            deleteCourseByAdminAction(course.id, token, input)
+          }
+          onSuccess={() => {
+            setShowDeleteCourseModal(false);
+            router.push("/admin/matakuliah");
+          }}
+        />
+      )}
     </div>
   );
 }

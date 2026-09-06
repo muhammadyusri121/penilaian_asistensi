@@ -3,11 +3,11 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CourseImportModal } from "./course-import-modal";
-import { createStudentInCourseAction, removeStudentFromCourseAction } from "../actions/student.actions";
+import { removeStudentFromCourseAction } from "../actions/student.actions";
 import { submitCourseProposalAction } from "@/features/courses/actions/course.actions";
+import { formatIndoDateTime, getRemainingDaysText } from "@/features/periods/lib/period-date.utils";
+import { CourseStudentCreateModal } from "./course-student-create-modal";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
 import {
   Search,
   Upload,
@@ -48,42 +48,7 @@ interface CourseStudentManagerProps {
   studentInputEnd?: Date | string | null;
 }
 
-function formatIndoDateTime(val?: Date | string | null) {
-  if (!val) return "-";
-  const date = new Date(val);
-  return new Intl.DateTimeFormat("id-ID", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
 
-function getRemainingDaysText(targetDate?: Date | string | null): string {
-  if (!targetDate) return "";
-  const target = new Date(targetDate).getTime();
-  const now = Date.now();
-  const diffMs = target - now;
-
-  if (diffMs <= 0) {
-    return "Telah ditutup";
-  }
-
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffHours < 24) {
-    if (diffHours <= 1) {
-      const diffMins = Math.max(1, Math.floor(diffMs / (1000 * 60)));
-      return `${diffMins} menit lagi`;
-    }
-    return `${diffHours} jam lagi`;
-  }
-
-  return `${diffDays} hari lagi`;
-}
 
 export function CourseStudentManager({
   courseId,
@@ -100,16 +65,6 @@ export function CourseStudentManager({
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
 
-  // Form State Tambah Manual
-  const [nim, setNim] = useState("");
-  const [name, setName] = useState("");
-  const [classGroup, setClassGroup] = useState("");
-  const [selectedAssistantId, setSelectedAssistantId] = useState<string>(
-    assistantsList[0]?.id || currentUserId
-  );
-  const [addLoading, setAddLoading] = useState(false);
-  const [addError, setAddError] = useState<string | null>(null);
-
   // Proposal Submission State
   const [submitLoading, setSubmitLoading] = useState(false);
   const [proposalMsg, setProposalMsg] = useState<{ text: string; error?: boolean } | null>(null);
@@ -123,34 +78,7 @@ export function CourseStudentManager({
     );
   });
 
-  async function handleAddManual(e: React.FormEvent) {
-    e.preventDefault();
-    setAddLoading(true);
-    setAddError(null);
 
-    try {
-      const res = await createStudentInCourseAction(courseId, {
-        nim,
-        name,
-        classGroup: classGroup || undefined,
-        assistantId: isAdmin ? selectedAssistantId : undefined,
-      });
-
-      if (res.success) {
-        setIsAddOpen(false);
-        setNim("");
-        setName("");
-        setClassGroup("");
-        router.refresh();
-      } else {
-        setAddError(res.message);
-      }
-    } catch {
-      setAddError("Terjadi kendala jaringan.");
-    } finally {
-      setAddLoading(false);
-    }
-  }
 
   async function handleSubmitProposal() {
     if (students.length === 0) {
@@ -429,78 +357,15 @@ export function CourseStudentManager({
       />
 
       {/* Modal Tambah Manual */}
-      <Modal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} title="Tambah Praktikan Manual" maxWidth="sm">
-        <form onSubmit={handleAddManual} className="space-y-4">
-          {addError && (
-            <div className="neo-box-sm bg-[#FF5252] text-white p-2.5 text-xs font-black">
-              ⚠️ {addError}
-            </div>
-          )}
-
-          <Input
-            id="manual-nim"
-            label="NIM Praktikan (Hanya Angka)"
-            placeholder="cth: 220101001"
-            required
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={nim}
-            onChange={(e) => {
-              const numericOnly = e.target.value.replace(/\D/g, "");
-              setNim(numericOnly);
-            }}
-          />
-
-          <Input
-            id="manual-name"
-            label="Nama Lengkap"
-            placeholder="cth: Budi Santoso"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-
-          <Input
-            id="manual-class"
-            label="Kelas / Shift (Opsional)"
-            placeholder="cth: Kelas A / Shift Senin 08:00"
-            value={classGroup}
-            onChange={(e) => setClassGroup(e.target.value)}
-          />
-
-          {isAdmin && assistantsList.length > 0 && (
-            <div className="space-y-1">
-              <label htmlFor="manual-assistant" className="block text-xs font-black uppercase text-black">
-                Tentukan Asisten Pembina:
-              </label>
-              <select
-                id="manual-assistant"
-                value={selectedAssistantId}
-                onChange={(e) => setSelectedAssistantId(e.target.value)}
-                className="neo-input w-full py-2 px-3 text-xs font-bold text-black bg-white cursor-pointer"
-              >
-                {assistantsList.map((ast) => (
-                  <option key={ast.id} value={ast.id}>
-                    {ast.name} (@{ast.username})
-                  </option>
-                ))}
-              </select>
-              <p className="text-[10px] text-neutral-500 font-medium">
-                Admin dapat menentukan asprak yang membimbing praktikan ini secara langsung.
-              </p>
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2 pt-2 border-t-2 border-neutral-200">
-            <Button type="button" variant="secondary" onClick={() => setIsAddOpen(false)}>
-              Batal
-            </Button>
-            <Button type="submit" variant="primary" disabled={addLoading}>
-              {addLoading ? "Menyimpan..." : "Simpan Praktikan"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+      <CourseStudentCreateModal
+        courseId={courseId}
+        isOpen={isAddOpen}
+        onClose={() => setIsAddOpen(false)}
+        onSuccess={() => router.refresh()}
+        isAdmin={isAdmin}
+        currentUserId={currentUserId}
+        assistantsList={assistantsList}
+      />
     </div>
   );
 }

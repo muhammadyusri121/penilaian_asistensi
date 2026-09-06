@@ -7,6 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Layers, ArrowRight, Lock, AlertCircle, Users, Edit3, Sliders } from "lucide-react";
 
+import { CourseModulesManager } from "@/features/modules/components/course-modules-manager";
+
 export const metadata: Metadata = {
   title: "Daftar Modul Praktikum | Workspace",
   description: "Daftar modul praktikum yang telah dirancang oleh Koordinator Laboratorium",
@@ -58,23 +60,28 @@ export default async function CourseModulPage({
       <div className="neo-box-sm bg-white p-3 border-2 border-black flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Sliders className="w-4 h-4 text-black" />
-          <span className="text-xs font-black uppercase text-black">Bobot Penilaian Semester:</span>
+          <span className="text-xs font-black uppercase text-black">
+            Bobot Penilaian Semester:
+          </span>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-          <span className="bg-sky-100 text-sky-800 border border-sky-400 px-2 py-0.5 rounded text-[11px]">
-            Presensi: {course.weightAttendance ?? 10}%
+        <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono font-bold">
+          <span className="bg-sky-100 text-sky-900 px-2 py-0.5 border border-sky-300">
+            Presensi {course.weightAttendance ?? 10}%
           </span>
-          <span className="bg-emerald-100 text-emerald-800 border border-emerald-400 px-2 py-0.5 rounded text-[11px]">
-            Tugas: {course.weightAssignment ?? 20}%
+          <span className="bg-emerald-100 text-emerald-900 px-2 py-0.5 border border-emerald-300">
+            Tugas {course.weightAssignment ?? 20}%
           </span>
-          <span className="bg-amber-100 text-amber-800 border border-amber-400 px-2 py-0.5 rounded text-[11px]">
-            Pretest: {course.weightPretest ?? 10}%
+          <span className="bg-amber-100 text-amber-900 px-2 py-0.5 border border-amber-300">
+            Pretest {course.weightPretest ?? 10}%
           </span>
-          <span className="bg-orange-100 text-orange-800 border border-orange-400 px-2 py-0.5 rounded text-[11px]">
-            UTS: {course.weightUts ?? 25}%
+          <span className="bg-orange-100 text-orange-900 px-2 py-0.5 border border-orange-300">
+            UTS {course.weightUts ?? 25}%
           </span>
-          <span className="bg-rose-100 text-rose-800 border border-rose-400 px-2 py-0.5 rounded text-[11px]">
-            UAS: {course.weightUas ?? 35}%
+          <span className="bg-rose-100 text-rose-900 px-2 py-0.5 border border-rose-300">
+            UAS {course.weightUas ?? 35}%
+          </span>
+          <span className="bg-neutral-800 text-white px-2 py-0.5 font-black">
+            Total 100%
           </span>
         </div>
       </div>
@@ -116,63 +123,13 @@ export default async function CourseModulPage({
         </div>
       )}
 
-      {/* Modules Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {course.modules.map((mod) => {
-          const isFinal = mod.isFinalReport;
-          const headerBg = isFinal ? "bg-[#FF5252] text-white" : "bg-white text-black";
-
-          return (
-            <Card key={mod.id} className="flex flex-col justify-between">
-              <div>
-                <div className={`p-4 border-b-3 border-black flex items-center justify-between ${headerBg}`}>
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 border-2 border-black bg-white text-black flex items-center justify-center font-mono font-black text-xs shrink-0">
-                      {mod.orderIndex}
-                    </span>
-                    <span className="text-xs font-black uppercase tracking-wider">
-                      {isFinal ? "Laporan Akhir" : `Modul ${mod.orderIndex}`}
-                    </span>
-                  </div>
-
-                  {isFinal && (
-                    <span className="neo-box-sm text-[9px] px-1.5 py-0.5 bg-black text-white font-black uppercase">
-                      Final
-                    </span>
-                  )}
-                </div>
-
-                <div className="p-4 space-y-2">
-                  <h3 className="text-base font-black text-black leading-snug">
-                    {mod.title}
-                  </h3>
-                  <p className="text-xs font-medium text-neutral-600">
-                    {mod.description || "Asistensi kode sumber dan pemeriksaan laporan resmi."}
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-4 border-t-3 border-black bg-neutral-50">
-                {isApproved ? (
-                  <Link href={`/${courseId}/penilaian/${mod.id}`} className="w-full">
-                    <Button variant="primary" size="sm" className="w-full text-xs">
-                      <span>Mulai Penilaian</span>
-                      <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-                    </Button>
-                  </Link>
-                ) : (
-                  <Link href={`/${courseId}/praktikan`} className="w-full">
-                    <Button variant="secondary" size="sm" className="w-full text-xs opacity-75">
-                      <Lock className="w-3.5 h-3.5 mr-1.5" />
-                      <span>Terkunci (Belum ACC)</span>
-                    </Button>
-                  </Link>
-                )}
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+      {/* Modules Grid with Delete & Captcha Manager */}
+      <CourseModulesManager
+        courseId={courseId}
+        modules={course.modules}
+        isApproved={isApproved}
+        isAdmin={session.role === "ADMIN"}
+      />
     </div>
   );
 }

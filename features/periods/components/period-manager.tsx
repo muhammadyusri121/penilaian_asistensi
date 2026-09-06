@@ -2,23 +2,30 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
+import { CaptchaDeleteModal } from "@/components/ui/captcha-delete-modal";
 import {
-  createPeriodAction,
+  deletePeriodAction,
   setActivePeriodAction,
-  togglePeriodWindowAction,
-  updateWindowAutoCloseAction,
 } from "../actions/period.actions";
 import { useRouter } from "next/navigation";
 import {
   Calendar,
-  Clock,
   Lock,
   Plus,
-  Unlock,
   Sliders,
+  Trash2,
+  Unlock,
 } from "lucide-react";
+import {
+  formatIndoDateTime,
+  getRemainingDaysText,
+} from "../lib/period-date.utils";
+import { PeriodCreateForm } from "./period-create-form";
+import { PeriodWindowModal } from "./period-window-modal";
+import {
+  PeriodAutoCloseModal,
+  AutoCloseModalData,
+} from "./period-auto-close-modal";
 
 export interface PeriodItem {
   id: string;
@@ -35,53 +42,6 @@ interface PeriodManagerProps {
   periods: PeriodItem[];
 }
 
-function formatIndoDateTime(val?: Date | string | null) {
-  if (!val) return "-";
-  const date = new Date(val);
-  return new Intl.DateTimeFormat("id-ID", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
-function toLocalDatetimeInputString(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
-function getRemainingDaysText(targetDate?: Date | string | null): string {
-  if (!targetDate) return "-";
-  const target = new Date(targetDate).getTime();
-  const now = Date.now();
-  const diffMs = target - now;
-
-  if (diffMs <= 0) {
-    return "Telah ditutup";
-  }
-
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffHours < 24) {
-    if (diffHours <= 1) {
-      const diffMins = Math.max(1, Math.floor(diffMs / (1000 * 60)));
-      return `${diffMins} menit lagi`;
-    }
-    return `${diffHours} jam lagi`;
-  }
-
-  return `${diffDays} hari lagi`;
-}
-
 export function PeriodManager({ periods }: PeriodManagerProps) {
   const router = useRouter();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -90,35 +50,18 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
   // Active period
   const activePeriod = periods.find((p) => p.isActive) || periods[0];
 
-  // Modal Kontrol Jendela Waktu (Pop-up saat klik "Atur")
+  // Modal Kontrol Jendela Waktu
   const [selectedPeriodIdForWindow, setSelectedPeriodIdForWindow] = useState<string | null>(null);
   const selectedPeriod = periods.find((p) => p.id === selectedPeriodIdForWindow) || null;
 
-  // Auto-close duration presets when opening window
-  const [courseOpenDays, setCourseOpenDays] = useState<number | "custom">(7);
-  const [courseCustomClose, setCourseCustomClose] = useState<string>(
-    toLocalDatetimeInputString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
-  );
+  // Auto-close adjustment modal state
+  const [autoCloseModal, setAutoCloseModal] = useState<AutoCloseModalData | null>(null);
 
-  const [studentOpenDays, setStudentOpenDays] = useState<number | "custom">(7);
-  const [studentCustomClose, setStudentCustomClose] = useState<string>(
-    toLocalDatetimeInputString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
-  );
-
-  // Auto-close adjustment modal
-  const [autoCloseModal, setAutoCloseModal] = useState<{
-    periodId: string;
-    windowType: "course" | "student";
-    title: string;
-    currentDate: string;
-  } | null>(null);
-  const [newAutoCloseDate, setNewAutoCloseDate] = useState("");
-
-  // Create Period Modal
+  // Create Period Form State
   const [showAddForm, setShowAddForm] = useState(false);
-  const [name, setName] = useState("");
-  const [isActiveNew, setIsActiveNew] = useState(true);
-  const [loadingCreate, setLoadingCreate] = useState(false);
+
+  // Delete Period Modal State
+  const [periodToDelete, setPeriodToDelete] = useState<PeriodItem | null>(null);
 
   const now = new Date();
 
@@ -132,88 +75,6 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
     ? (!activePeriod.studentInputStart || now >= new Date(activePeriod.studentInputStart)) &&
       (activePeriod.studentInputEnd ? now <= new Date(activePeriod.studentInputEnd) : false)
     : false;
-
-  // Helper checks for selected period in modal
-  const isTargetCourseOpen = selectedPeriod
-    ? (!selectedPeriod.courseInputStart || now >= new Date(selectedPeriod.courseInputStart)) &&
-      (selectedPeriod.courseInputEnd ? now <= new Date(selectedPeriod.courseInputEnd) : false)
-    : false;
-
-  const isTargetStudentOpen = selectedPeriod
-    ? (!selectedPeriod.studentInputStart || now >= new Date(selectedPeriod.studentInputStart)) &&
-      (selectedPeriod.studentInputEnd ? now <= new Date(selectedPeriod.studentInputEnd) : false)
-    : false;
-
-  // Toggle Window Handler (Buka / Tutup)
-  async function handleToggleWindow(
-    periodId: string,
-    windowType: "course" | "student",
-    action: "open" | "close"
-  ) {
-    let autoCloseISO: string | undefined = undefined;
-
-    if (action === "open") {
-      if (windowType === "course") {
-        if (courseOpenDays === "custom") {
-          autoCloseISO = new Date(courseCustomClose).toISOString();
-        } else {
-          autoCloseISO = new Date(Date.now() + Number(courseOpenDays) * 24 * 60 * 60 * 1000).toISOString();
-        }
-      } else {
-        if (studentOpenDays === "custom") {
-          autoCloseISO = new Date(studentCustomClose).toISOString();
-        } else {
-          autoCloseISO = new Date(Date.now() + Number(studentOpenDays) * 24 * 60 * 60 * 1000).toISOString();
-        }
-      }
-    }
-
-    const actionKey = `${periodId}-${windowType}-${action}`;
-    setActionLoading(actionKey);
-    setFeedback(null);
-
-    try {
-      const res = await togglePeriodWindowAction(periodId, windowType, action, autoCloseISO);
-      if (res.success) {
-        setFeedback({ success: true, message: res.message });
-        router.refresh();
-      } else {
-        setFeedback({ success: false, message: res.message });
-      }
-    } catch {
-      setFeedback({ success: false, message: "Terjadi kendala jaringan." });
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  // Update Auto-Close Date
-  async function handleSaveAutoClose(e: React.FormEvent) {
-    e.preventDefault();
-    if (!autoCloseModal || !newAutoCloseDate) return;
-
-    setActionLoading("save-autoclose");
-    setFeedback(null);
-
-    try {
-      const res = await updateWindowAutoCloseAction(
-        autoCloseModal.periodId,
-        autoCloseModal.windowType,
-        new Date(newAutoCloseDate).toISOString()
-      );
-      if (res.success) {
-        setFeedback({ success: true, message: res.message });
-        setAutoCloseModal(null);
-        router.refresh();
-      } else {
-        setFeedback({ success: false, message: res.message });
-      }
-    } catch {
-      setFeedback({ success: false, message: "Terjadi kendala jaringan." });
-    } finally {
-      setActionLoading(null);
-    }
-  }
 
   // Set Active Period
   async function handleSetActive(periodId: string) {
@@ -233,43 +94,9 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
     }
   }
 
-  // Create Period
-  async function handleCreatePeriod(e: React.FormEvent) {
-    e.preventDefault();
-    setLoadingCreate(true);
-    setFeedback(null);
-
-    try {
-      const defaultStart = new Date().toISOString();
-      const defaultEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-
-      const res = await createPeriodAction({
-        name,
-        isActive: isActiveNew,
-        courseInputStart: defaultStart,
-        courseInputEnd: defaultEnd,
-        studentInputStart: defaultStart,
-        studentInputEnd: defaultEnd,
-      });
-
-      if (res.success) {
-        setShowAddForm(false);
-        setName("");
-        setFeedback({ success: true, message: res.message });
-        router.refresh();
-      } else {
-        setFeedback({ success: false, message: res.message });
-      }
-    } catch {
-      setFeedback({ success: false, message: "Terjadi kendala jaringan." });
-    } finally {
-      setLoadingCreate(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
-      {/* Feedback Toast */}
+      {/* Toast Feedback */}
       {feedback && (
         <div
           className={`neo-box p-4 flex items-center justify-between text-xs font-black ${
@@ -280,7 +107,7 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
           <button
             type="button"
             onClick={() => setFeedback(null)}
-            className="font-bold underline text-xs ml-4"
+            className="font-bold underline text-xs ml-4 cursor-pointer"
           >
             Tutup
           </button>
@@ -373,46 +200,17 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
       )}
 
       {/* Form Buat Periode Baru */}
-      {showAddForm && (
-        <div className="neo-box bg-white p-5 border-3 border-black space-y-4">
-          <h3 className="text-base font-black uppercase tracking-tight flex items-center gap-2">
-            <Plus className="w-5 h-5" />
-            Buat Periode Akademik Baru
-          </h3>
-          <form onSubmit={handleCreatePeriod} className="space-y-4">
-            <Input
-              id="period-name"
-              label="Nama Periode Semester"
-              placeholder="Contoh: Semester Genap 2026/2027"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                id="is-active"
-                type="checkbox"
-                checked={isActiveNew}
-                onChange={(e) => setIsActiveNew(e.target.checked)}
-                className="w-4 h-4 border-2 border-black accent-black cursor-pointer"
-              />
-              <label htmlFor="is-active" className="text-xs font-bold text-black cursor-pointer">
-                Langsung aktifkan sebagai semester berjalan sekarang
-              </label>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-3 border-t-2 border-black">
-              <Button type="button" variant="secondary" onClick={() => setShowAddForm(false)}>
-                Batal
-              </Button>
-              <Button type="submit" variant="primary" disabled={loadingCreate}>
-                {loadingCreate ? "Menyimpan..." : "Simpan Periode Baru"}
-              </Button>
-            </div>
-          </form>
-        </div>
-      )}
+      <PeriodCreateForm
+        isOpen={showAddForm}
+        onClose={() => setShowAddForm(false)}
+        onSuccess={(message) => {
+          setFeedback({ success: true, message });
+          router.refresh();
+        }}
+        onError={(message) => {
+          setFeedback({ success: false, message });
+        }}
+      />
 
       {/* Tabel Riwayat & Manajemen Semua Periode */}
       <div className="neo-box bg-white overflow-hidden">
@@ -436,7 +234,7 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
                 <th className="p-3 border-r-3 border-black">Jendela Input Praktikan</th>
                 <th className="p-3 border-r-3 border-black text-center">Total MK</th>
                 <th className="p-3 border-r-3 border-black text-center">Status</th>
-                <th className="p-3 text-center w-48">Aksi</th>
+                <th className="p-3 text-center w-56">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y-2 divide-neutral-200 text-xs font-medium">
@@ -532,9 +330,18 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
                             disabled={actionLoading === `set-active-${p.id}`}
                             onClick={() => handleSetActive(p.id)}
                           >
-                            Set Aktif
+                            Aktifkan
                           </Button>
                         )}
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          className="text-xs px-2 py-1 bg-[#FF5252] text-white hover:bg-red-700 transition-colors"
+                          onClick={() => setPeriodToDelete(p)}
+                          title="Hapus Periode & Seluruh Datanya"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -545,380 +352,67 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
         </div>
       </div>
 
-      {/* MODAL POP-UP KONTROL JENDELA (Tampil saat klik "Atur") */}
+      {/* Modal Kontrol Jendela Waktu (Pop-up saat klik "Atur") */}
       {selectedPeriod && (
-        <Modal
-          isOpen={!!selectedPeriod}
+        <PeriodWindowModal
+          period={selectedPeriod}
           onClose={() => setSelectedPeriodIdForWindow(null)}
-          title={`Pengaturan Jendela: ${selectedPeriod.name}`}
-          maxWidth="2xl"
-        >
-          <div className="space-y-4">
-            <p className="text-xs text-neutral-600 font-medium">
-              Kelola status pembukaan jendela klaim mata kuliah bagi asprak dan penginputan praktikan untuk periode ini.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-              {/* KARTU 1: Jendela Klaim MK (Asprak) */}
-              <div
-                className={`neo-box p-4 flex flex-col justify-between border-3 border-black transition-colors ${
-                  isTargetCourseOpen ? "bg-[#F0FDF4]" : "bg-white"
-                }`}
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-black uppercase tracking-wider text-black">
-                      1. JENDELA KLAIM MK (ASPRAK)
-                    </span>
-                    {isTargetCourseOpen ? (
-                      <span className="neo-box-sm bg-[#4CAF50] text-black px-2.5 py-1 text-xs font-black uppercase border-2 border-black inline-flex items-center gap-1.5">
-                        <Unlock className="w-3.5 h-3.5" /> TERBUKA
-                      </span>
-                    ) : (
-                      <span className="neo-box-sm bg-[#FF5252] text-white px-2.5 py-1 text-xs font-black uppercase border-2 border-black inline-flex items-center gap-1.5">
-                        <Lock className="w-3.5 h-3.5" /> DITUTUP
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-xs text-neutral-600 leading-relaxed font-medium">
-                    {isTargetCourseOpen
-                      ? "Asisten praktikum saat ini dapat memilih mata kuliah praktikum yang akan diampu pada semester ini."
-                      : "Asisten praktikum tidak dapat memilih atau mengganti mata kuliah praktikum saat ini."}
-                  </p>
-
-                  {isTargetCourseOpen ? (
-                    <div className="neo-box-sm bg-white p-3 space-y-1.5 border-2 border-black">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 text-xs font-black text-black">
-                          <Clock className="w-4 h-4 text-blue-600 shrink-0" />
-                          <span>Tutup Otomatis:</span>
-                        </div>
-                        <span className="neo-box-sm bg-amber-300 text-black px-2 py-0.5 text-xs font-black border-2 border-black shrink-0">
-                          ⏳ {getRemainingDaysText(selectedPeriod.courseInputEnd)}
-                        </span>
-                      </div>
-                      <p className="text-xs font-bold text-neutral-800 font-mono pl-5">
-                        {formatIndoDateTime(selectedPeriod.courseInputEnd)}
-                      </p>
-                      <div className="pt-1 pl-5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const curr = selectedPeriod.courseInputEnd
-                              ? toLocalDatetimeInputString(new Date(selectedPeriod.courseInputEnd))
-                              : toLocalDatetimeInputString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-                            setNewAutoCloseDate(curr);
-                            setAutoCloseModal({
-                              periodId: selectedPeriod.id,
-                              windowType: "course",
-                              title: "Sesuaikan Tutup Otomatis Klaim MK",
-                              currentDate: curr,
-                            });
-                          }}
-                          className="text-[11px] font-black underline text-blue-700 hover:text-blue-900"
-                        >
-                          Sesuaikan Waktu Tutup Otomatis
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="neo-box-sm bg-neutral-50 p-3 space-y-2 border-2 border-neutral-300">
-                      <span className="text-[11px] font-black uppercase text-neutral-700 block">
-                        Pilihan Tutup Otomatis saat Dibuka:
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {[3, 7, 14, 30].map((days) => (
-                          <button
-                            key={days}
-                            type="button"
-                            onClick={() => setCourseOpenDays(days)}
-                            className={`px-2 py-1 text-xs font-black border-2 border-black ${
-                              courseOpenDays === days
-                                ? "bg-black text-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-                                : "bg-white text-black hover:bg-neutral-100"
-                            }`}
-                          >
-                            {days} Hari
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => setCourseOpenDays("custom")}
-                          className={`px-2 py-1 text-xs font-black border-2 border-black ${
-                            courseOpenDays === "custom"
-                              ? "bg-black text-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-                              : "bg-white text-black hover:bg-neutral-100"
-                          }`}
-                        >
-                          Pilih Waktu...
-                        </button>
-                      </div>
-
-                      {courseOpenDays === "custom" && (
-                        <div className="pt-1">
-                          <label className="text-[10px] font-black text-neutral-600 block mb-1">
-                            Tutup Otomatis Pada:
-                          </label>
-                          <input
-                            type="datetime-local"
-                            value={courseCustomClose}
-                            onChange={(e) => setCourseCustomClose(e.target.value)}
-                            className="w-full text-xs p-1.5 border-2 border-black font-mono font-bold bg-white"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Action Button */}
-                <div className="pt-4 border-t-2 border-dashed border-neutral-300 mt-4">
-                  {isTargetCourseOpen ? (
-                    <button
-                      type="button"
-                      disabled={actionLoading === `${selectedPeriod.id}-course-close`}
-                      onClick={() => handleToggleWindow(selectedPeriod.id, "course", "close")}
-                      className="w-full neo-btn py-2.5 bg-[#FF5252] text-white border-2 border-black font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-red-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                    >
-                      <Lock className="w-4 h-4" />
-                      {actionLoading === `${selectedPeriod.id}-course-close`
-                        ? "Menutup..."
-                        : "TUTUP JENDELA SEKARANG"}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={actionLoading === `${selectedPeriod.id}-course-open`}
-                      onClick={() => handleToggleWindow(selectedPeriod.id, "course", "open")}
-                      className="w-full neo-btn py-2.5 bg-[#4CAF50] text-black border-2 border-black font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-[#43A047] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                    >
-                      <Unlock className="w-4 h-4" />
-                      {actionLoading === `${selectedPeriod.id}-course-open`
-                        ? "Membuka..."
-                        : "BUKA JENDELA SEKARANG"}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* KARTU 2: Jendela Input Praktikan */}
-              <div
-                className={`neo-box p-4 flex flex-col justify-between border-3 border-black transition-colors ${
-                  isTargetStudentOpen ? "bg-[#F0FDF4]" : "bg-white"
-                }`}
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-black uppercase tracking-wider text-black">
-                      2. JENDELA INPUT PRAKTIKAN
-                    </span>
-                    {isTargetStudentOpen ? (
-                      <span className="neo-box-sm bg-[#4CAF50] text-black px-2.5 py-1 text-xs font-black uppercase border-2 border-black inline-flex items-center gap-1.5">
-                        <Unlock className="w-3.5 h-3.5" /> TERBUKA
-                      </span>
-                    ) : (
-                      <span className="neo-box-sm bg-[#FF5252] text-white px-2.5 py-1 text-xs font-black uppercase border-2 border-black inline-flex items-center gap-1.5">
-                        <Lock className="w-3.5 h-3.5" /> DITUTUP
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-xs text-neutral-600 leading-relaxed font-medium">
-                    {isTargetStudentOpen
-                      ? "Asisten praktikum saat ini dapat mendaftarkan mahasiswa bimbingan praktikan ke mata kuliah yang diampu."
-                      : "Penginputan data mahasiswa praktikan oleh asprak sedang dinonaktifkan / ditutup."}
-                  </p>
-
-                  {isTargetStudentOpen ? (
-                    <div className="neo-box-sm bg-white p-3 space-y-1.5 border-2 border-black">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 text-xs font-black text-black">
-                          <Clock className="w-4 h-4 text-blue-600 shrink-0" />
-                          <span>Tutup Otomatis:</span>
-                        </div>
-                        <span className="neo-box-sm bg-amber-300 text-black px-2 py-0.5 text-xs font-black border-2 border-black shrink-0">
-                          ⏳ {getRemainingDaysText(selectedPeriod.studentInputEnd)}
-                        </span>
-                      </div>
-                      <p className="text-xs font-bold text-neutral-800 font-mono pl-5">
-                        {formatIndoDateTime(selectedPeriod.studentInputEnd)}
-                      </p>
-                      <div className="pt-1 pl-5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const curr = selectedPeriod.studentInputEnd
-                              ? toLocalDatetimeInputString(new Date(selectedPeriod.studentInputEnd))
-                              : toLocalDatetimeInputString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-                            setNewAutoCloseDate(curr);
-                            setAutoCloseModal({
-                              periodId: selectedPeriod.id,
-                              windowType: "student",
-                              title: "Sesuaikan Tutup Otomatis Input Praktikan",
-                              currentDate: curr,
-                            });
-                          }}
-                          className="text-[11px] font-black underline text-blue-700 hover:text-blue-900"
-                        >
-                          Sesuaikan Waktu Tutup Otomatis
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="neo-box-sm bg-neutral-50 p-3 space-y-2 border-2 border-neutral-300">
-                      <span className="text-[11px] font-black uppercase text-neutral-700 block">
-                        Pilihan Tutup Otomatis saat Dibuka:
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {[3, 7, 14, 30].map((days) => (
-                          <button
-                            key={days}
-                            type="button"
-                            onClick={() => setStudentOpenDays(days)}
-                            className={`px-2 py-1 text-xs font-black border-2 border-black ${
-                              studentOpenDays === days
-                                ? "bg-black text-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-                                : "bg-white text-black hover:bg-neutral-100"
-                            }`}
-                          >
-                            {days} Hari
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => setStudentOpenDays("custom")}
-                          className={`px-2 py-1 text-xs font-black border-2 border-black ${
-                            studentOpenDays === "custom"
-                              ? "bg-black text-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-                              : "bg-white text-black hover:bg-neutral-100"
-                          }`}
-                        >
-                          Pilih Waktu...
-                        </button>
-                      </div>
-
-                      {studentOpenDays === "custom" && (
-                        <div className="pt-1">
-                          <label className="text-[10px] font-black text-neutral-600 block mb-1">
-                            Tutup Otomatis Pada:
-                          </label>
-                          <input
-                            type="datetime-local"
-                            value={studentCustomClose}
-                            onChange={(e) => setStudentCustomClose(e.target.value)}
-                            className="w-full text-xs p-1.5 border-2 border-black font-mono font-bold bg-white"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Action Button */}
-                <div className="pt-4 border-t-2 border-dashed border-neutral-300 mt-4">
-                  {isTargetStudentOpen ? (
-                    <button
-                      type="button"
-                      disabled={actionLoading === `${selectedPeriod.id}-student-close`}
-                      onClick={() => handleToggleWindow(selectedPeriod.id, "student", "close")}
-                      className="w-full neo-btn py-2.5 bg-[#FF5252] text-white border-2 border-black font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-red-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                    >
-                      <Lock className="w-4 h-4" />
-                      {actionLoading === `${selectedPeriod.id}-student-close`
-                        ? "Menutup..."
-                        : "TUTUP JENDELA SEKARANG"}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={actionLoading === `${selectedPeriod.id}-student-open`}
-                      onClick={() => handleToggleWindow(selectedPeriod.id, "student", "open")}
-                      className="w-full neo-btn py-2.5 bg-[#4CAF50] text-black border-2 border-black font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-[#43A047] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                    >
-                      <Unlock className="w-4 h-4" />
-                      {actionLoading === `${selectedPeriod.id}-student-open`
-                        ? "Membuka..."
-                        : "BUKA JENDELA SEKARANG"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-3 border-t-2 border-neutral-200">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setSelectedPeriodIdForWindow(null)}
-              >
-                Selesai / Tutup Pop-up
-              </Button>
-            </div>
-          </div>
-        </Modal>
+          onOpenAutoCloseModal={(data) => setAutoCloseModal(data)}
+          onSuccess={(message) => {
+            setFeedback({ success: true, message });
+            router.refresh();
+          }}
+          onError={(message) => {
+            setFeedback({ success: false, message });
+          }}
+        />
       )}
 
       {/* Modal Sesuaikan Waktu Tutup Otomatis */}
       {autoCloseModal && (
-        <Modal
-          isOpen={!!autoCloseModal}
+        <PeriodAutoCloseModal
+          data={autoCloseModal}
           onClose={() => setAutoCloseModal(null)}
-          title={autoCloseModal.title}
-          maxWidth="sm"
-        >
-          <form onSubmit={handleSaveAutoClose} className="space-y-4">
-            <p className="text-xs text-neutral-600 font-medium">
-              Jendela saat ini sedang dibuka. Tentukan kapan jendela ini akan ditutup secara otomatis oleh sistem.
+          onSuccess={(message) => {
+            setFeedback({ success: true, message });
+            router.refresh();
+          }}
+          onError={(message) => {
+            setFeedback({ success: false, message });
+          }}
+        />
+      )}
+
+      {/* Modal Konfirmasi Hapus Periode dengan CAPTCHA */}
+      {periodToDelete && (
+        <CaptchaDeleteModal
+          isOpen={!!periodToDelete}
+          onClose={() => setPeriodToDelete(null)}
+          title="Konfirmasi Hapus Periode"
+          action="DELETE_PERIOD"
+          targetId={periodToDelete.id}
+          confirmButtonText="Ya, Hapus Seluruh Data"
+          targetDescription={
+            <p>
+              Apakah Anda yakin ingin menghapus periode{" "}
+              <span className="font-black underline">{periodToDelete.name}</span>?
             </p>
-
-            <div>
-              <label className="text-xs font-black uppercase text-black block mb-1">
-                Waktu Tutup Otomatis Baru:
-              </label>
-              <input
-                type="datetime-local"
-                required
-                value={newAutoCloseDate}
-                onChange={(e) => setNewAutoCloseDate(e.target.value)}
-                className="w-full text-xs p-2 border-2 border-black font-mono font-bold bg-white"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              <span className="text-[10px] font-bold text-neutral-500 w-full block">
-                Tambah Waktu Cepat:
-              </span>
-              {[1, 3, 7, 14].map((extraDays) => (
-                <button
-                  key={extraDays}
-                  type="button"
-                  onClick={() => {
-                    const next = new Date(Date.now() + extraDays * 24 * 60 * 60 * 1000);
-                    setNewAutoCloseDate(toLocalDatetimeInputString(next));
-                  }}
-                  className="px-2 py-0.5 text-[10px] font-bold border-2 border-black bg-neutral-100 hover:bg-neutral-200"
-                >
-                  +{extraDays} Hari
-                </button>
-              ))}
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t-2 border-neutral-200">
-              <Button type="button" variant="secondary" onClick={() => setAutoCloseModal(null)}>
-                Batal
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={actionLoading === "save-autoclose"}
-              >
-                {actionLoading === "save-autoclose" ? "Menyimpan..." : "Simpan Waktu Tutup"}
-              </Button>
-            </div>
-          </form>
-        </Modal>
+          }
+          warningNotice={
+            <>
+              Semua mata kuliah ({periodToDelete._count.courses} MK), modul praktikum, tugas mahasiswa,
+              presensi, nilai tugas, dan rekap nilai akhir dalam periode ini akan{" "}
+              <span className="font-black underline">DIHAPUS SELURUHNYA</span> dan tidak dapat dipulihkan.
+            </>
+          }
+          onConfirm={(token, input) =>
+            deletePeriodAction(periodToDelete.id, token, input)
+          }
+          onSuccess={(message) => {
+            setFeedback({ success: true, message });
+            router.refresh();
+          }}
+        />
       )}
     </div>
   );

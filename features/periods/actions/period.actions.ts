@@ -2,33 +2,41 @@
 
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/security";
+import { verifyAndConsumeCaptcha } from "@/lib/captcha";
 import { periodSchema, PeriodInput } from "../schemas/period.schema";
 import { revalidatePath } from "next/cache";
 
 /**
  * Otomatis inisialisasi default periode akademik aktif jika belum ada
  */
-export async function ensureDefaultPeriod(): Promise<string> {
+export async function ensureDefaultPeriod(allowActivateExisting = false): Promise<string | null> {
   const active = await prisma.academicPeriod.findFirst({
     where: { isActive: true },
   });
 
-  const now = new Date();
-  const nextThreeMonths = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
-
   if (active) {
-    // Jika courseInputEnd sama dengan courseInputStart (karena default migrasi skema), perpanjang otomatis agar periode terbuka
-    if (new Date(active.courseInputEnd).getTime() <= new Date(active.courseInputStart).getTime()) {
-      await (prisma.academicPeriod.update as any)({
-        where: { id: active.id },
-        data: {
-          courseInputEnd: active.studentInputEnd,
-        },
-      });
-      active.courseInputEnd = active.studentInputEnd;
-    }
     return active.id;
   }
+
+  // Jika ada periode lain di DB, periksa apakah boleh mengaktifkan secara eksplisit
+  const existing = await prisma.academicPeriod.findFirst({
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (existing) {
+    if (allowActivateExisting) {
+      await prisma.academicPeriod.update({
+        where: { id: existing.id },
+        data: { isActive: true },
+      });
+      return existing.id;
+    }
+    // Jika tidak diizinkan aktivasi otomatis (misal admin sengaja menonaktifkan seluruh periode), jangan ubah status
+    return null;
+  }
+
+  const now = new Date();
+  const nextThreeMonths = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
 
   const created = await (prisma.academicPeriod.create as any)({
     data: {
@@ -48,17 +56,40 @@ export async function ensureDefaultPeriod(): Promise<string> {
  * Ambil periode akademik yang sedang aktif
  */
 export async function getActivePeriodAction() {
-  await ensureDefaultPeriod();
-  return prisma.academicPeriod.findFirst({
+  const active = await prisma.academicPeriod.findFirst({
     where: { isActive: true },
   });
+
+  if (active) return active;
+
+  // Hanya jika benar-benar database kosong (first-time setup)
+  const count = await prisma.academicPeriod.count();
+  if (count === 0) {
+    await ensureDefaultPeriod(true);
+    return prisma.academicPeriod.findFirst({
+      where: { isActive: true },
+    });
+  }
+
+  // Jika periode ada tetapi seluruhnya dinonaktifkan admin, biarkan null
+  return null;
 }
 
 /**
  * Ambil seluruh riwayat periode akademik
  */
 export async function getAllPeriodsAction() {
-  await ensureDefaultPeriod();
+  const periods = await prisma.academicPeriod.findMany({
+    orderBy: { createdAt: "desc" },
+    include: {
+      _count: { select: { courses: true } },
+    },
+  });
+
+  if (periods.length > 0) return periods;
+
+  // Hanya jalankan inisialisasi default jika database kosong melompong
+  await ensureDefaultPeriod(true);
   return prisma.academicPeriod.findMany({
     orderBy: { createdAt: "desc" },
     include: {
@@ -349,6 +380,80 @@ export async function updateWindowAutoCloseAction(
   } catch (error) {
     console.error("updateWindowAutoCloseAction failed", error);
     return { success: false, message: "Gagal memperbarui waktu tutup otomatis." };
+  }
+}
+
+/**
+ * Hapus Periode Akademik beserta seluruh data terkait di dalamnya (Khusus ADMIN)
+ * Memerlukan token challenge CAPTCHA bertanda tangan server
+ */
+export async function deletePeriodAction(
+  periodId: string,
+  captchaToken: string,
+  captchaInput: string
+) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { success: false, message: "Akses ditolak. Hanya Administrator yang berhak menghapus periode." };
+  }
+
+  const captchaCheck = await verifyAndConsumeCaptcha(
+    captchaToken,
+    captchaInput,
+    "DELETE_PERIOD",
+    periodId,
+    session.userId
+  );
+
+  if (!captchaCheck.valid) {
+    return {
+      success: false,
+      message: captchaCheck.message || "Kode verifikasi tidak valid atau kedaluwarsa.",
+    };
+  }
+
+  try {
+    const period = await prisma.academicPeriod.findUnique({
+      where: { id: periodId },
+      select: { id: true, name: true, isActive: true },
+    });
+
+    if (!period) {
+      return { success: false, message: "Periode akademik tidak ditemukan." };
+    }
+
+    // Hapus periode akademik langsung - relasi Course, Module, Submission, Grade, dll.
+    // akan dihapus secara otomatis dan instan oleh foreign key constraint ON DELETE CASCADE PostgreSQL
+    await prisma.academicPeriod.delete({
+      where: { id: periodId },
+    });
+
+    // Jika periode yang dihapus adalah periode aktif, aktifkan periode lain yang tersisa (jika ada)
+    if (period.isActive) {
+      const nextPeriod = await prisma.academicPeriod.findFirst({
+        orderBy: { createdAt: "desc" },
+      });
+      if (nextPeriod) {
+        await prisma.academicPeriod.update({
+          where: { id: nextPeriod.id },
+          data: { isActive: true },
+        });
+      }
+    }
+
+
+    revalidatePath("/admin/periode");
+    revalidatePath("/admin/matakuliah");
+    revalidatePath("/praktikum");
+    revalidatePath("/rekap-nilai");
+
+    return {
+      success: true,
+      message: `Periode "${period.name}" beserta seluruh mata kuliah dan data di dalamnya berhasil dihapus permanen.`,
+    };
+  } catch (error) {
+    console.error("deletePeriodAction failed", error);
+    return { success: false, message: "Gagal menghapus periode akademik." };
   }
 }
 

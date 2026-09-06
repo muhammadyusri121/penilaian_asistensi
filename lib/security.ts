@@ -8,7 +8,8 @@ if (!authSecret) {
   throw new Error("AUTH_SECRET environment variable is required and must be set.");
 }
 
-const SECRET_KEY = new TextEncoder().encode(authSecret);
+export const SECRET_KEY = new TextEncoder().encode(authSecret);
+
 
 const SESSION_COOKIE_NAME = "asprak_session";
 const SESSION_DURATION = 7 * 24 * 60 * 60; // 7 hari

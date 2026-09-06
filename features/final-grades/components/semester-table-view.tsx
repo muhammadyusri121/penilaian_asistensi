@@ -2,12 +2,10 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
-import { Input } from "@/components/ui/input";
 import { exportSemesterToExcel } from "../utils/export-excel";
-import { updateExamScoreAction } from "../actions/final-grades.actions";
 import { Download, Search, Edit3 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { ExamScoreModal } from "./exam-score-modal";
 
 interface SemesterTableViewProps {
   courseId?: string;
@@ -57,11 +55,6 @@ export function SemesterTableView({ data, courseId }: SemesterTableViewProps) {
     uas: number;
   } | null>(null);
 
-  const [utsInput, setUtsInput] = useState<number>(0);
-  const [uasInput, setUasInput] = useState<number>(0);
-  const [loading, setLoading] = useState(false);
-  const [examError, setExamError] = useState<string | null>(null);
-
   const filtered = data.students.filter((item) => {
     const q = search.toLowerCase();
     return (
@@ -77,43 +70,12 @@ export function SemesterTableView({ data, courseId }: SemesterTableViewProps) {
   }
 
   function openExamModal(item: (typeof data.students)[0]) {
-    const utsMurni = item.rawUtsScore;
-    const uasMurni = item.rawUasScore;
-    setExamError(null);
     setSelectedStudentForExam({
       nim: item.student.nim,
       name: item.student.name,
-      uts: utsMurni,
-      uas: uasMurni,
+      uts: item.rawUtsScore,
+      uas: item.rawUasScore,
     });
-    setUtsInput(utsMurni);
-    setUasInput(uasMurni);
-  }
-
-  async function handleSaveExams(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedStudentForExam) return;
-    setLoading(true);
-    setExamError(null);
-
-    try {
-      const res = await updateExamScoreAction({
-        studentNim: selectedStudentForExam.nim,
-        utsScore: utsInput,
-        uasScore: uasInput,
-        courseId,
-      });
-      if (res.success) {
-        setSelectedStudentForExam(null);
-        router.refresh();
-      } else {
-        setExamError(res.message || "Gagal menyimpan nilai ujian.");
-      }
-    } catch {
-      setExamError("Terjadi kendala koneksi ke server.");
-    } finally {
-      setLoading(false);
-    }
   }
 
   return (
@@ -370,55 +332,13 @@ export function SemesterTableView({ data, courseId }: SemesterTableViewProps) {
       </div>
 
       {/* Modal Input UTS & UAS */}
-      <Modal
-        isOpen={selectedStudentForExam !== null}
+      <ExamScoreModal
+        student={selectedStudentForExam}
+        courseId={courseId}
+        weights={{ uts: w.uts, uas: w.uas }}
         onClose={() => setSelectedStudentForExam(null)}
-        title={`Nilai Ujian: ${selectedStudentForExam?.name}`}
-        maxWidth="sm"
-      >
-        <form onSubmit={handleSaveExams} className="space-y-4">
-          <p className="text-xs text-neutral-600 font-bold">
-            Masukkan nilai murni (0 - 100) untuk UTS dan UAS mahasiswa <strong className="text-black">{selectedStudentForExam?.nim}</strong>.
-          </p>
-
-          {examError && (
-            <div className="neo-box-sm bg-[#FF5252] text-white p-2.5 text-xs font-black">
-              ⚠️ {examError}
-            </div>
-          )}
-
-          <Input
-            label={`Nilai Murni UTS (Bobot ${w.uts}%)`}
-            type="number"
-            min={0}
-            max={100}
-            step="0.1"
-            required
-            value={utsInput}
-            onChange={(e) => setUtsInput(parseFloat(e.target.value) || 0)}
-          />
-
-          <Input
-            label={`Nilai Murni UAS (Bobot ${w.uas}%)`}
-            type="number"
-            min={0}
-            max={100}
-            step="0.1"
-            required
-            value={uasInput}
-            onChange={(e) => setUasInput(parseFloat(e.target.value) || 0)}
-          />
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => setSelectedStudentForExam(null)}>
-              Batal
-            </Button>
-            <Button type="submit" variant="primary" disabled={loading}>
-              {loading ? "Menyimpan..." : "Simpan Nilai Ujian"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+        onSuccess={() => router.refresh()}
+      />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, withDbRetry } from "@/lib/prisma";
 import { getSession } from "@/lib/security";
+import { verifyAndConsumeCaptcha } from "@/lib/captcha";
 import {
   createCourseSchema,
   CreateCourseInput,
@@ -15,93 +16,14 @@ import {
 import { revalidatePath } from "next/cache";
 
 /**
- * Otomatis seed contoh Mata Kuliah Praktikum & Modul jika database masih kosong
+ * Seeding awal dilakukan melalui script khusus (npm run seed:admin).
+ * Runtime auto-seeding dimatikan agar tidak menimbulkan race condition,
+ * kehabisan koneksi database pool, atau mengembalikan data yang sengaja dihapus admin.
  */
-let hasCheckedSeed = false;
 export async function seedInitialCourseIfEmptyAction(): Promise<void> {
-  if (hasCheckedSeed) return;
-  const activePeriod = await getActivePeriodAction();
-  if (!activePeriod) return;
-
-  const count = await prisma.course.count({
-    where: { academicPeriodId: activePeriod.id },
-  });
-
-  if (count === 0) {
-    const adminUser = await prisma.user.findFirst({
-      where: { role: "ADMIN" },
-    });
-    if (!adminUser) return;
-
-    await prisma.$transaction(async (tx) => {
-      // 1. Course 1: Struktur Data
-      const c1 = await tx.course.create({
-        data: {
-          academicPeriodId: activePeriod.id,
-          code: "IF201",
-          title: "Struktur Data & Algoritma",
-          description: "Praktikum implementasi struktur data dinamis, pointer, linked list, tree, dan graph.",
-          creatorId: adminUser.id,
-        },
-      });
-
-      const c1Modules = [
-        { title: "Modul 1: Pengenalan Sintaks & Tipe Data", isFinalReport: false },
-        { title: "Modul 2: Struktur Kontrol & Perulangan", isFinalReport: false },
-        { title: "Modul 3: Fungsi & Rekursi", isFinalReport: false },
-        { title: "Modul 4: Array & Pointer Memory", isFinalReport: false },
-        { title: "Modul 5: Struct & Linked List", isFinalReport: false },
-        { title: "Modul 6: Stack & Queue", isFinalReport: false },
-        { title: "Modul 7: Algoritma Searching & Sorting", isFinalReport: false },
-        { title: "Laporan Akhir Praktikum", isFinalReport: true },
-      ];
-
-      for (let i = 0; i < c1Modules.length; i++) {
-        await tx.module.create({
-          data: {
-            courseId: c1.id,
-            orderIndex: i + 1,
-            title: c1Modules[i].title,
-            isFinalReport: c1Modules[i].isFinalReport,
-          },
-        });
-      }
-
-      // 2. Course 2: Basis Data
-      const c2 = await tx.course.create({
-        data: {
-          academicPeriodId: activePeriod.id,
-          code: "IF202",
-          title: "Sistem Basis Data",
-          description: "Praktikum DDL, DML, perancangan relasi, normalisasi, dan query kompleks PostgreSQL.",
-          creatorId: adminUser.id,
-        },
-      });
-
-      const c2Modules = [
-        { title: "Modul 1: Perancangan ERD & Relasi", isFinalReport: false },
-        { title: "Modul 2: Data Definition Language (DDL)", isFinalReport: false },
-        { title: "Modul 3: Data Manipulation Language (DML)", isFinalReport: false },
-        { title: "Modul 4: Join Tables & Subquery", isFinalReport: false },
-        { title: "Modul 5: Agregasi & Group By", isFinalReport: false },
-        { title: "Modul 6: Trigger & Stored Procedure", isFinalReport: false },
-        { title: "Laporan Akhir & Proyek Basis Data", isFinalReport: true },
-      ];
-
-      for (let i = 0; i < c2Modules.length; i++) {
-        await tx.module.create({
-          data: {
-            courseId: c2.id,
-            orderIndex: i + 1,
-            title: c2Modules[i].title,
-            isFinalReport: c2Modules[i].isFinalReport,
-          },
-        });
-      }
-    });
-  }
-  hasCheckedSeed = true;
+  return;
 }
+
 
 /**
  * Buat mata kuliah praktikum baru beserta modul-modul dinamisnya (Khusus ADMIN)
@@ -293,36 +215,66 @@ export async function updateCourseByAdminAction(courseId: string, input: UpdateC
 }
 
 /**
- * Hapus Mata Kuliah Praktikum (Khusus ADMIN)
+ * Hapus Mata Kuliah Praktikum beserta seluruh modul, tugas, nilai, dan relasinya (Khusus ADMIN)
+ * Dilindungi verifikasi Captcha 6 Karakter
  */
-export async function deleteCourseByAdminAction(courseId: string) {
+export async function deleteCourseByAdminAction(
+  courseId: string,
+  captchaToken: string,
+  captchaInput: string
+): Promise<{ success: boolean; message: string }> {
   const session = await getSession();
   if (!session || session.role !== "ADMIN") {
-    return { success: false, message: "Akses ditolak." };
+    return {
+      success: false,
+      message: "Akses ditolak. Hanya Koordinator Lab (Admin) yang berhak menghapus mata kuliah.",
+    };
+  }
+
+  const captchaCheck = await verifyAndConsumeCaptcha(
+    captchaToken,
+    captchaInput,
+    "DELETE_COURSE",
+    courseId,
+    session.userId
+  );
+
+  if (!captchaCheck.valid) {
+    return {
+      success: false,
+      message: captchaCheck.message || "Kode captcha verifikasi tidak cocok. Silakan coba lagi.",
+    };
   }
 
   try {
-    const enrollmentCount = await prisma.courseEnrollment.count({
-      where: { courseId },
+    const course = await prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true, title: true, code: true },
     });
 
-    if (enrollmentCount > 0) {
-      return {
-        success: false,
-        message: `Mata kuliah tidak dapat dihapus karena masih memiliki ${enrollmentCount} data pendaftaran mahasiswa.`,
-      };
+    if (!course) {
+      return { success: false, message: "Mata kuliah tidak ditemukan." };
     }
 
+    // Hapus mata kuliah - seluruh Module, Submission, Grade, Attendance, Pretest,
+    // FinalGrade, CourseEnrollment, CourseAssistant otomatis terhapus via ON DELETE CASCADE
     await prisma.course.delete({
       where: { id: courseId },
     });
 
     revalidatePath("/admin/matakuliah");
+    revalidatePath(`/admin/matakuliah/${courseId}/edit`);
     revalidatePath("/praktikum");
-    return { success: true, message: "Mata kuliah berhasil dihapus." };
+    revalidatePath("/admin/rekap-nilai");
+    revalidatePath("/rekap-nilai");
+
+    return {
+      success: true,
+      message: `Mata kuliah "${course.code} - ${course.title}" beserta seluruh data di dalamnya berhasil dihapus.`,
+    };
   } catch (error) {
     console.error("deleteCourseByAdminAction failed", error);
-    return { success: false, message: "Gagal menghapus mata kuliah." };
+    return { success: false, message: "Gagal menghapus mata kuliah praktikum." };
   }
 }
 
@@ -334,34 +286,34 @@ export async function getCatalogCoursesAction() {
   const session = await getSession();
   if (!session) return [];
 
-  await seedInitialCourseIfEmptyAction();
-
   const activePeriod = await getActivePeriodAction();
   if (!activePeriod) return [];
 
-  const courses = await prisma.course.findMany({
-    where: { academicPeriodId: activePeriod.id },
-    orderBy: { code: "asc" },
-    include: {
-      academicPeriod: { select: { name: true, courseInputStart: true, courseInputEnd: true, studentInputStart: true, studentInputEnd: true } },
-      creator: { select: { name: true, username: true } },
-      assistants: {
-        include: {
-          assistant: { select: { id: true, name: true, username: true } },
+  const courses = await withDbRetry(() =>
+    prisma.course.findMany({
+      where: { academicPeriodId: activePeriod.id },
+      orderBy: { code: "asc" },
+      include: {
+        creator: { select: { name: true, username: true } },
+        assistants: {
+          include: {
+            assistant: { select: { id: true, name: true, username: true } },
+          },
+        },
+        modules: {
+          orderBy: { orderIndex: "asc" },
+          select: { id: true, title: true, isFinalReport: true, orderIndex: true },
+        },
+        _count: {
+          select: {
+            modules: true,
+            enrollments: true,
+            assistants: true,
+          },
         },
       },
-      modules: {
-        orderBy: { orderIndex: "asc" },
-      },
-      _count: {
-        select: {
-          modules: true,
-          enrollments: true,
-          assistants: true,
-        },
-      },
-    },
-  });
+    })
+  );
 
   const now = new Date();
   const courseStart = activePeriod.courseInputStart
@@ -378,6 +330,13 @@ export async function getCatalogCoursesAction() {
     const myProposalStatus = myAssignment?.status || null;
     return {
       ...c,
+      academicPeriod: {
+        name: activePeriod.name,
+        courseInputStart: activePeriod.courseInputStart,
+        courseInputEnd: activePeriod.courseInputEnd,
+        studentInputStart: activePeriod.studentInputStart,
+        studentInputEnd: activePeriod.studentInputEnd,
+      },
       scheduleDay: c.scheduleDay,
       scheduleTime: c.scheduleTime,
       weightAttendance: c.weightAttendance ?? 10,
