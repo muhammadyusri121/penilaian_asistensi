@@ -446,6 +446,9 @@ export async function deletePeriodAction(
     revalidatePath("/admin/matakuliah");
     revalidatePath("/praktikum");
     revalidatePath("/rekap-nilai");
+    if (period.isActive) {
+      revalidatePath("/modul");
+    }
 
     return {
       success: true,

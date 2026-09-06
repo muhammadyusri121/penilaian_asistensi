@@ -141,37 +141,48 @@ export async function deleteModuleAction(
       return { success: false, message: "Modul praktikum tidak ditemukan." };
     }
 
-    const totalModules = await prisma.module.count({
-      where: { courseId: mod.courseId },
+    const txResult = await prisma.$transaction(async (tx) => {
+      const totalModules = await tx.module.count({
+        where: { courseId: mod.courseId },
+      });
+
+      if (totalModules <= 1) {
+        return {
+          success: false,
+          message: "Gagal menghapus. Mata kuliah harus memiliki minimal 1 modul praktikum.",
+        };
+      }
+
+      // Hapus modul - Submission, File, dan Grade otomatis terhapus via ON DELETE CASCADE
+      await tx.module.delete({
+        where: { id: moduleId },
+      });
+
+      // Re-index orderIndex modul yang tersisa secara berurutan
+      const remainingModules = await tx.module.findMany({
+        where: { courseId: mod.courseId },
+        orderBy: { orderIndex: "asc" },
+        select: { id: true, orderIndex: true },
+      });
+
+      for (let i = 0; i < remainingModules.length; i++) {
+        const newOrder = i + 1;
+        if (remainingModules[i].orderIndex !== newOrder) {
+          await tx.module.update({
+            where: { id: remainingModules[i].id },
+            data: { orderIndex: newOrder },
+          });
+        }
+      }
+
+      return { success: true };
     });
 
-    if (totalModules <= 1) {
+    if (!txResult.success) {
       return {
         success: false,
-        message: "Gagal menghapus. Mata kuliah harus memiliki minimal 1 modul praktikum.",
+        message: txResult.message || "Gagal menghapus modul praktikum.",
       };
-    }
-
-    // Hapus modul - Submission, File, dan Grade otomatis terhapus via ON DELETE CASCADE
-    await prisma.module.delete({
-      where: { id: moduleId },
-    });
-
-    // Re-index orderIndex modul yang tersisa secara berurutan
-    const remainingModules = await prisma.module.findMany({
-      where: { courseId: mod.courseId },
-      orderBy: { orderIndex: "asc" },
-      select: { id: true, orderIndex: true },
-    });
-
-    for (let i = 0; i < remainingModules.length; i++) {
-      const newOrder = i + 1;
-      if (remainingModules[i].orderIndex !== newOrder) {
-        await prisma.module.update({
-          where: { id: remainingModules[i].id },
-          data: { orderIndex: newOrder },
-        });
-      }
     }
 
     revalidatePath(`/${mod.courseId}/modul`);

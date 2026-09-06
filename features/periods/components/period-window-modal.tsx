@@ -63,6 +63,11 @@ export function PeriodWindowModal({
     if (action === "open") {
       if (windowType === "course") {
         if (courseOpenDays === "custom") {
+          if (!courseCustomClose || isNaN(new Date(courseCustomClose).getTime())) {
+            setActionLoading(null);
+            onError("Silakan tentukan tanggal dan waktu penutupan yang valid.");
+            return;
+          }
           autoCloseISO = new Date(courseCustomClose).toISOString();
         } else {
           autoCloseISO = new Date(
@@ -71,6 +76,11 @@ export function PeriodWindowModal({
         }
       } else {
         if (studentOpenDays === "custom") {
+          if (!studentCustomClose || isNaN(new Date(studentCustomClose).getTime())) {
+            setActionLoading(null);
+            onError("Silakan tentukan tanggal dan waktu penutupan yang valid.");
+            return;
+          }
           autoCloseISO = new Date(studentCustomClose).toISOString();
         } else {
           autoCloseISO = new Date(

@@ -72,9 +72,9 @@ export function CaptchaDeleteModal({
     }
   }, [isOpen, targetId]);
 
-  function handleRefresh() {
+  async function handleRefresh() {
     if (targetId) {
-      loadCaptcha(targetId);
+      await loadCaptcha(targetId);
     }
   }
 
@@ -101,8 +101,8 @@ export function CaptchaDeleteModal({
         onSuccess?.(res.message);
         onClose();
       } else {
+        await handleRefresh();
         setDeleteError(res.message || "Gagal memproses permintaan hapus.");
-        handleRefresh();
       }
     } catch {
       setDeleteError("Terjadi kendala jaringan saat memproses tindakan.");

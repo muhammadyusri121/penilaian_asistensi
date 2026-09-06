@@ -29,26 +29,30 @@ export function PeriodCreateForm({
     e.preventDefault();
     setLoading(true);
 
-    const now = new Date();
-    const defaultEnd = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+    try {
+      const now = new Date();
+      const defaultEnd = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
 
-    const res = await createPeriodAction({
-      name,
-      isActive,
-      courseInputStart: now.toISOString(),
-      courseInputEnd: defaultEnd.toISOString(),
-      studentInputStart: now.toISOString(),
-      studentInputEnd: defaultEnd.toISOString(),
-    });
+      const res = await createPeriodAction({
+        name,
+        isActive,
+        courseInputStart: now.toISOString(),
+        courseInputEnd: defaultEnd.toISOString(),
+        studentInputStart: now.toISOString(),
+        studentInputEnd: defaultEnd.toISOString(),
+      });
 
-    setLoading(false);
-
-    if (res.success) {
-      setName("");
-      onSuccess("Periode akademik baru berhasil dibuat.");
-      onClose();
-    } else {
-      onError(res.message || "Gagal membuat periode.");
+      if (res.success) {
+        setName("");
+        onSuccess("Periode akademik baru berhasil dibuat.");
+        onClose();
+      } else {
+        onError(res.message || "Gagal membuat periode.");
+      }
+    } catch {
+      onError("Terjadi kesalahan jaringan.");
+    } finally {
+      setLoading(false);
     }
   }
 
