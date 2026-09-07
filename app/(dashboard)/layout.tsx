@@ -38,13 +38,13 @@ export default async function DashboardLayout({
             </div>
             <div>
               <Link href="/praktikum" className="text-lg font-black uppercase tracking-tight text-black flex items-center gap-2">
-                Asistensi Lab
+                Penilaian Praktikum
                 <span className="neo-box-sm text-[10px] px-1.5 py-0.5 bg-[#2196F3] text-white">
                   v 2.1
                 </span>
               </Link>
               <p className="text-[10px] font-bold text-neutral-500 uppercase">
-                Sistem Penilaian Asistensi Praktikum
+                Sistem Penilaian Praktikum
               </p>
             </div>
           </div>
@@ -120,7 +120,7 @@ export default async function DashboardLayout({
                   className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
                 >
                   <BookOpen className="w-3.5 h-3.5 text-[#2196F3]" />
-                  Pilihan Mata Kuliah
+                  Mata Kuliah
                 </Link>
                 <Link
                   href="/praktikan"

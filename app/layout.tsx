@@ -5,6 +5,9 @@ import { WhatsAppSupport } from "@/components/ui/whatsapp-support";
 export const metadata: Metadata = {
   title: "Sistem Penilaian Asistensi Praktikum | Laboratorium",
   description: "Sistem evaluasi dan rekapitulasi penilaian asistensi praktikum laboratorium komputer & teknik",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
