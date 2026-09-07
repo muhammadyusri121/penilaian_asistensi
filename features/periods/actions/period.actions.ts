@@ -178,6 +178,50 @@ export async function setActivePeriodAction(periodId: string) {
 }
 
 /**
+ * Update Nama Periode Akademik (Khusus ADMIN)
+ */
+export async function updatePeriodNameAction(periodId: string, name: string) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { success: false, message: "Hanya Koordinator Lab yang dapat mengubah nama periode." };
+  }
+
+  const trimmed = name?.trim();
+  if (!trimmed || trimmed.length < 3) {
+    return { success: false, message: "Nama periode minimal 3 karakter." };
+  }
+
+  try {
+    const existing = await prisma.academicPeriod.findUnique({
+      where: { id: periodId },
+    });
+
+    if (!existing) {
+      return { success: false, message: "Periode akademik tidak ditemukan." };
+    }
+
+    await prisma.academicPeriod.update({
+      where: { id: periodId },
+      data: { name: trimmed },
+    });
+
+    revalidatePath("/admin/periode");
+    revalidatePath("/admin/matakuliah");
+    revalidatePath("/praktikum");
+    revalidatePath("/modul");
+    revalidatePath("/rekap-nilai");
+
+    return {
+      success: true,
+      message: `Nama periode berhasil diubah menjadi "${trimmed}".`,
+    };
+  } catch (error) {
+    console.error("updatePeriodNameAction failed", error);
+    return { success: false, message: "Gagal memperbarui nama periode." };
+  }
+}
+
+/**
  * Update jadwal periode (buka/tutup klaim MK & input praktikan) - Khusus ADMIN
  */
 export async function updatePeriodDatesAction(

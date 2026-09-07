@@ -3,7 +3,7 @@ import { Metadata } from "next";
 import { getSession } from "@/lib/security";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { getMyAssignedCoursesAction } from "@/features/courses/actions/course.actions";
+import { getMyAssignedCoursesAction } from "@/features/courses/actions/course-proposal.actions";
 import { getSemesterSummaryAction } from "@/features/final-grades/actions/final-grades.actions";
 import { SemesterTableView } from "@/features/final-grades/components/semester-table-view";
 import { Award, BookOpen, Clock, Layers, Sliders, Users, ExternalLink } from "lucide-react";

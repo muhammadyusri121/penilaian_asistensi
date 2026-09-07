@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CourseImportModal } from "./course-import-modal";
 import { removeStudentFromCourseAction } from "../actions/student.actions";
-import { submitCourseProposalAction } from "@/features/courses/actions/course.actions";
+import { submitCourseProposalAction } from "@/features/courses/actions/course-proposal.actions";
 import { formatIndoDateTime, getRemainingDaysText } from "@/features/periods/lib/period-date.utils";
 import { CourseStudentCreateModal } from "./course-student-create-modal";
 import { Button } from "@/components/ui/button";

@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/security";
 import { getCourseStudentsAction } from "@/features/students/actions/student.actions";
-import { getMyCourseProposalAction } from "@/features/courses/actions/course.actions";
+import { getMyCourseProposalAction } from "@/features/courses/actions/course-proposal.actions";
 import { getActiveAssistantsAction } from "@/features/admin/actions/admin.actions";
 import { getActivePeriodAction } from "@/features/periods/actions/period.actions";
 import { CourseStudentManager } from "@/features/students/components/course-student-manager";

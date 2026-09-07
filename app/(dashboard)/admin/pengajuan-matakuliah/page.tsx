@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 import { getSession } from "@/lib/security";
 import { redirect } from "next/navigation";
-import { getAllCourseProposalsAction } from "@/features/courses/actions/course.actions";
+import { getAllCourseProposalsAction } from "@/features/courses/actions/course-proposal.actions";
 import { CourseProposalManager } from "@/features/admin/components/course-proposal-manager";
 import { UserCheck } from "lucide-react";
 

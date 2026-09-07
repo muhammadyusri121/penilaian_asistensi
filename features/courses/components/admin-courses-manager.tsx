@@ -13,8 +13,10 @@ import {
   Trash2,
   Award,
   Sliders,
+  Copy,
 } from "lucide-react";
 import { deleteCourseByAdminAction } from "../actions/course.actions";
+import { CourseDuplicateModal } from "./course-duplicate-modal";
 
 export interface CourseCatalogItem {
   id: string;
@@ -55,6 +57,7 @@ interface AdminCoursesManagerProps {
 export function AdminCoursesManager({ courses }: AdminCoursesManagerProps) {
   const router = useRouter();
   const [courseToDelete, setCourseToDelete] = useState<CourseCatalogItem | null>(null);
+  const [courseToDuplicate, setCourseToDuplicate] = useState<CourseCatalogItem | null>(null);
   const [feedback, setFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
   return (
@@ -194,9 +197,19 @@ export function AdminCoursesManager({ courses }: AdminCoursesManagerProps) {
                 <div className="flex items-center gap-2">
                   <Link href={`/${course.id}/praktikan`} className="flex-1">
                     <Button variant="secondary" size="sm" className="w-full text-xs">
-                      Buka Ruang Kerja
+                      Ruang Kerja
                     </Button>
                   </Link>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="text-xs bg-[#00E5FF] hover:bg-cyan-400 text-black font-black"
+                    onClick={() => setCourseToDuplicate(course)}
+                    title="Duplikat Mata Kuliah (Salin Kurikulum & Modul)"
+                  >
+                    <Copy className="w-3.5 h-3.5 mr-1" />
+                    {/* Duplikat */}
+                  </Button>
                   <Link href={`/admin/matakuliah/${course.id}/edit`}>
                     <Button
                       variant="secondary"
@@ -205,7 +218,7 @@ export function AdminCoursesManager({ courses }: AdminCoursesManagerProps) {
                       title="Edit Kurikulum & Modul"
                     >
                       <Edit3 className="w-3.5 h-3.5 mr-1" />
-                      Edit
+                      {/* Edit */}
                     </Button>
                   </Link>
                   <Button
@@ -259,6 +272,19 @@ export function AdminCoursesManager({ courses }: AdminCoursesManagerProps) {
           onConfirm={(token, input) =>
             deleteCourseByAdminAction(courseToDelete.id, token, input)
           }
+          onSuccess={(message) => {
+            setFeedback({ success: true, message });
+            router.refresh();
+          }}
+        />
+      )}
+
+      {/* MODAL DUPLIKAT MATA KULIAH */}
+      {courseToDuplicate && (
+        <CourseDuplicateModal
+          isOpen={!!courseToDuplicate}
+          onClose={() => setCourseToDuplicate(null)}
+          course={courseToDuplicate}
           onSuccess={(message) => {
             setFeedback({ success: true, message });
             router.refresh();

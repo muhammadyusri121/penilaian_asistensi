@@ -15,6 +15,7 @@ import {
   Sliders,
   Trash2,
   Unlock,
+  Edit3,
 } from "lucide-react";
 import {
   formatIndoDateTime,
@@ -26,6 +27,7 @@ import {
   PeriodAutoCloseModal,
   AutoCloseModalData,
 } from "./period-auto-close-modal";
+import { PeriodEditNameModal } from "./period-edit-name-modal";
 
 export interface PeriodItem {
   id: string;
@@ -59,6 +61,9 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
 
   // Create Period Form State
   const [showAddForm, setShowAddForm] = useState(false);
+
+  // Edit Period Name Modal State
+  const [periodToEdit, setPeriodToEdit] = useState<PeriodItem | null>(null);
 
   // Delete Period Modal State
   const [periodToDelete, setPeriodToDelete] = useState<PeriodItem | null>(null);
@@ -124,6 +129,14 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
               </span>
               <h2 className="text-xl font-black uppercase text-black flex items-center gap-2">
                 <span>{activePeriod.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setPeriodToEdit(activePeriod)}
+                  title="Edit Nama Periode"
+                  className="p-1 hover:bg-neutral-200 border border-black cursor-pointer text-black inline-flex items-center"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </button>
                 <span className="neo-box-sm bg-[#4CAF50] text-black px-2 py-0.5 text-[10px] font-black uppercase">
                   Aktif
                 </span>
@@ -315,6 +328,16 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
                         <Button
                           variant="secondary"
                           size="sm"
+                          className="text-xs px-2 py-1 bg-yellow-300 hover:bg-yellow-400"
+                          onClick={() => setPeriodToEdit(p)}
+                          title="Edit Nama Periode"
+                        >
+                          <Edit3 className="w-3 h-3 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           className="text-xs px-2.5 py-1"
                           onClick={() => setSelectedPeriodIdForWindow(p.id)}
                           title="Atur Jendela Waktu"
@@ -411,6 +434,22 @@ export function PeriodManager({ periods }: PeriodManagerProps) {
           onSuccess={(message) => {
             setFeedback({ success: true, message });
             router.refresh();
+          }}
+        />
+      )}
+
+      {/* Modal Edit Nama Periode */}
+      {periodToEdit && (
+        <PeriodEditNameModal
+          period={periodToEdit}
+          isOpen={!!periodToEdit}
+          onClose={() => setPeriodToEdit(null)}
+          onSuccess={(message) => {
+            setFeedback({ success: true, message });
+            router.refresh();
+          }}
+          onError={(message) => {
+            setFeedback({ success: false, message });
           }}
         />
       )}

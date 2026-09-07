@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { claimCourseAction, unclaimCourseAction } from "../actions/course.actions";
+import { claimCourseAction, unclaimCourseAction } from "../actions/course-proposal.actions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { BookOpen, Check, Layers, Users, ExternalLink, AlertCircle, Clock, Lock } from "lucide-react";

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   approveCourseProposalAction,
   rejectCourseProposalAction,
-} from "@/features/courses/actions/course.actions";
+} from "@/features/courses/actions/course-proposal.actions";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { CheckCircle2, XCircle, Clock, BookOpen, User, Users, AlertCircle } from "lucide-react";
