@@ -4,7 +4,7 @@ export const createAssistantSchema = z.object({
   name: z.string().min(3, "Nama lengkap minimal 3 karakter"),
   username: z
     .string()
-    .min(3, "Username / Kode Asprak minimal 3 karakter")
+    .min(3, "Username minimal 3 karakter")
     .regex(/^[a-zA-Z0-9._-]+$/, "Username hanya boleh huruf, angka, titik, underscore, atau tanda hubung"),
   email: z.string().email("Format email tidak valid").optional().or(z.literal("")),
   password: z.string().min(6, "Password minimal 6 karakter"),
@@ -17,7 +17,7 @@ export const updateAssistantSchema = z.object({
   name: z.string().min(3, "Nama lengkap minimal 3 karakter"),
   username: z
     .string()
-    .min(3, "Username / Kode Asprak minimal 3 karakter")
+    .min(3, "Username minimal 3 karakter")
     .regex(/^[a-zA-Z0-9._-]+$/, "Username hanya boleh huruf, angka, titik, underscore, atau tanda hubung"),
   email: z.string().email("Format email tidak valid").optional().or(z.literal("")),
   password: z.string().min(6, "Password baru minimal 6 karakter").optional().or(z.literal("")),

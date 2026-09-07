@@ -85,8 +85,8 @@ export function AssistantCreateModal({
 
           <Input
             id="create-username"
-            label="Username / Kode Asprak"
-            placeholder="Contoh: asprak_yusri / NIP"
+            label="Username"
+            placeholder="Contoh: yusri_admin"
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}

@@ -1,5 +1,6 @@
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { getSession } from "@/lib/security";
 import { redirect } from "next/navigation";
 import { logoutAction } from "@/features/auth/actions/auth.actions";
@@ -9,7 +10,6 @@ import {
   Award,
   LogOut,
   ShieldCheck,
-  GraduationCap,
   CalendarRange,
   UserCheck,
   Layers,
@@ -33,9 +33,17 @@ export default async function DashboardLayout({
       <header className="border-b-3 border-black bg-white sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="neo-box-sm bg-[#FFEB3B] p-2">
-              <GraduationCap className="w-6 h-6 text-black" />
-            </div>
+            <Link href="/praktikum" className="shrink-0 flex items-center">
+              <Image
+                src="/icon.svg"
+                alt="Logo"
+                width={48}
+                height={33}
+                className="h-9 w-auto object-contain"
+                style={{ width: "auto" }}
+                priority
+              />
+            </Link>
             <div>
               <Link href="/praktikum" className="text-lg font-black uppercase tracking-tight text-black flex items-center gap-2">
                 Penilaian Praktikum
@@ -71,44 +79,44 @@ export default async function DashboardLayout({
         </div>
 
         {/* Navigation Bar */}
-        <nav className="border-t-2 border-black bg-[#FFEB3B] px-4">
+        <nav className="border-t-2 border-black bg-[#FFEB3B] bg-nav-pattern px-4">
           <div className="max-w-7xl mx-auto flex items-center gap-1.5 sm:gap-2 overflow-x-auto py-1.5">
             {/* Menu Khusus Admin */}
             {isAdmin ? (
               <>
                 <Link
                   href="/admin/matakuliah"
-                  className="neo-btn text-xs px-3 py-1.5 bg-black text-white font-black flex items-center gap-1.5 shrink-0 hover:bg-neutral-800"
+                  className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
                 >
-                  <Layers className="w-3.5 h-3.5 text-[#FFEB3B]" />
+                  <Layers className="w-3.5 h-3.5 text-amber-600" />
                   Master Mata Kuliah
                 </Link>
                 <Link
                   href="/admin/pengajuan-matakuliah"
-                  className="neo-btn text-xs px-3 py-1.5 bg-black text-white font-black flex items-center gap-1.5 shrink-0 hover:bg-neutral-800"
+                  className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
                 >
-                  <UserCheck className="w-3.5 h-3.5 text-amber-400" />
+                  <UserCheck className="w-3.5 h-3.5 text-amber-600" />
                   Pengajuan MK
                 </Link>
                 <Link
                   href="/admin/persetujuan-akun"
-                  className="neo-btn text-xs px-3 py-1.5 bg-black text-white font-black flex items-center gap-1.5 shrink-0 hover:bg-neutral-800"
+                  className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
                 >
-                  <UserCheck className="w-3.5 h-3.5 text-[#00E5FF]" />
+                  <UserCheck className="w-3.5 h-3.5 text-cyan-600" />
                   Akun Asprak
                 </Link>
                 <Link
                   href="/admin/rekap-nilai"
-                  className="neo-btn text-xs px-3 py-1.5 bg-black text-white font-black flex items-center gap-1.5 shrink-0 hover:bg-neutral-800"
+                  className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
                 >
-                  <Award className="w-3.5 h-3.5 text-[#4CAF50]" />
+                  <Award className="w-3.5 h-3.5 text-emerald-600" />
                   Rekap Nilai Semua MK
                 </Link>
                 <Link
                   href="/admin/periode"
-                  className="neo-btn text-xs px-3 py-1.5 bg-black text-white font-black flex items-center gap-1.5 shrink-0 hover:bg-neutral-800"
+                  className="neo-btn text-xs px-3 py-1.5 bg-white text-black font-black flex items-center gap-1.5 shrink-0 hover:bg-yellow-100"
                 >
-                  <CalendarRange className="w-3.5 h-3.5 text-[#2196F3]" />
+                  <CalendarRange className="w-3.5 h-3.5 text-blue-600" />
                   Periode Semester
                 </Link>
               </>

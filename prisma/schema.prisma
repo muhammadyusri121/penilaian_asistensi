@@ -61,7 +61,7 @@ model AcademicPeriod {
 // 2. Akun Pengguna (Asprak & Admin)
 model User {
   id               String       @id @default(uuid())
-  username         String       @unique // Kode Asprak / NIP
+  username         String       @unique // Username akun
   name             String
   email            String?      @unique
   passwordHash     String

@@ -110,7 +110,7 @@ export async function createAssistantByAdminAction(input: CreateAssistantInput) 
     });
 
     if (existingUser) {
-      return { success: false, message: `Username / Kode Asprak "${username}" sudah digunakan.` };
+      return { success: false, message: `Username "${username}" sudah digunakan.` };
     }
 
     if (email && email.trim() !== "") {

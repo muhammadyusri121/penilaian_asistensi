@@ -94,7 +94,7 @@ export function AssistantEditModal({
 
           <Input
             id="edit-username"
-            label="Username / Kode Asprak"
+            label="Username"
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}

@@ -18,7 +18,7 @@ export default async function LoginPage() {
   }
 
   return (
-    <main className="min-h-[100dvh] flex flex-col items-center justify-center p-4 bg-[#FDFBF7]">
+    <main className="min-h-[100dvh] flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 bg-[#FDFBF7]">
       <LoginForm />
     </main>
   );

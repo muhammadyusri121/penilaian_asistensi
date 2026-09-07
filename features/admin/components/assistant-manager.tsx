@@ -177,7 +177,7 @@ export function AssistantManager({ assistants }: AssistantManagerProps) {
               <tr className="border-b-3 border-black bg-[#FFF9F0] text-xs font-black uppercase">
                 <th className="p-3 border-r-3 border-black w-12 text-center">No</th>
                 <th className="p-3 border-r-3 border-black">Nama Lengkap</th>
-                <th className="p-3 border-r-3 border-black">Username (Kode Asprak)</th>
+                <th className="p-3 border-r-3 border-black">Username</th>
                 <th className="p-3 border-r-3 border-black">Email</th>
                 <th className="p-3 border-r-3 border-black text-center">MK Diampu</th>
                 <th className="p-3 border-r-3 border-black text-center">Praktikan</th>
