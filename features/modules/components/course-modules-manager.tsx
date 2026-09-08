@@ -115,7 +115,7 @@ export function CourseModulesManager({
                   <Link href={`/${courseId}/praktikan`} className="flex-1">
                     <Button variant="secondary" size="sm" className="w-full text-xs opacity-75">
                       <Lock className="w-3.5 h-3.5 mr-1.5" />
-                      <span>Terkunci (Belum ACC)</span>
+                      <span>Terkunci</span>
                     </Button>
                   </Link>
                 )}

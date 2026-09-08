@@ -167,10 +167,11 @@ model CourseEnrollment {
   studentNim   String
   assistantId  String       // Asprak tunggal yang membina mahasiswa ini di MK ini
   classGroup   String?      // Contoh: "Kelas B / Shift 1"
+  status       ProposalStatus @default(APPROVED) // DRAFT, PENDING_APPROVAL, APPROVED, REJECTED
   enrolledAt   DateTime     @default(now())
 
   course       Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  student      Student      @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+  student      Student      @relation(fields: [studentNim], references: [nim], onDelete: Cascade, onUpdate: Cascade)
   assistant    User         @relation("AssistantEnrollments", fields: [assistantId], references: [id], onDelete: Restrict)
 
   // 1 NIM hanya boleh ada 1 kali per Course (Tidak boleh diampu 2 asprak di MK yang sama)
@@ -187,7 +188,7 @@ model Submission {
   submittedAt  DateTime         @default(now())
   status       SubmissionStatus @default(SUBMITTED)
 
-  student      Student          @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+  student      Student          @relation(fields: [studentNim], references: [nim], onDelete: Cascade, onUpdate: Cascade)
   module       Module           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   files        SubmissionFile[]
   grade        Grade?
@@ -250,7 +251,7 @@ model Attendance {
   createdAt    DateTime   @default(now())
 
   course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  student      Student    @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+  student      Student    @relation(fields: [studentNim], references: [nim], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([courseId, studentNim, meetingNo])
 }
@@ -274,7 +275,7 @@ model PretestScore {
   studentNim  String
   score       Float    @default(0)
 
-  student     Student  @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+  student     Student  @relation(fields: [studentNim], references: [nim], onDelete: Cascade, onUpdate: Cascade)
   pretest     Pretest  @relation(fields: [pretestId], references: [id], onDelete: Cascade)
 
   @@unique([pretestId, studentNim])
@@ -291,7 +292,7 @@ model FinalGrade {
   updatedAt    DateTime   @default(now()) @updatedAt
 
   course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  student      Student    @relation(fields: [studentNim], references: [nim], onDelete: Cascade)
+  student      Student    @relation(fields: [studentNim], references: [nim], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([courseId, studentNim])
 }

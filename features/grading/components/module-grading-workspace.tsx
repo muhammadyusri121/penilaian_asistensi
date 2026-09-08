@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { ComboGradingModal } from "./combo-grading-modal";
-import { ArrowLeft, Search, Edit3 } from "lucide-react";
+import { ArrowLeft, Search, Edit3, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { formatDateDMY } from "../utils/date";
 
 interface ModuleGradingWorkspaceProps {
   module: {
@@ -11,11 +13,13 @@ interface ModuleGradingWorkspaceProps {
     title: string;
     orderIndex: number;
     description?: string | null;
+    courseId?: string;
   };
   initialStudents: Array<{
     nim: string;
     name: string;
     classGroup?: string | null;
+    enrollmentStatus?: string;
     submissions: Array<{
       id: string;
       moduleId: string;
@@ -91,6 +95,10 @@ export function ModuleGradingWorkspace({
       : 0;
 
   function openGradeModal(student: (typeof initialStudents)[0]) {
+    if (student.enrollmentStatus && student.enrollmentStatus !== "APPROVED") {
+      alert("Praktikan ini berstatus Menunggu ACC dari Koordinator Lab dan belum dapat dinilai.");
+      return;
+    }
     const sub = student.submissions[0];
     setSelectedStudent({
       nim: student.nim,
@@ -107,13 +115,13 @@ export function ModuleGradingWorkspace({
       {/* Top Banner */}
       <div className="neo-box bg-[#FFEB3B] p-5 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <a
-            href="/modul"
+          <Link
+            href={module.courseId ? `/${module.courseId}/modul` : "/praktikum"}
             className="neo-btn p-2 bg-white text-black hover:bg-neutral-100 flex items-center justify-center"
             title="Kembali ke Daftar Modul"
           >
             <ArrowLeft className="w-5 h-5" />
-          </a>
+          </Link>
           <div>
             <div className="flex items-center gap-2">
               <span className="neo-box-sm px-2 py-0.5 bg-black text-[#FFEB3B] font-mono text-xs font-black">
@@ -230,11 +238,7 @@ export function ModuleGradingWorkspace({
                   const isGraded = gr !== null && gr !== undefined;
 
                   const formattedDate = gr?.asistensiDate
-                    ? new Date(gr.asistensiDate).toLocaleDateString("id-ID", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })
+                    ? formatDateDMY(gr.asistensiDate)
                     : "-";
 
                   return (
@@ -255,7 +259,15 @@ export function ModuleGradingWorkspace({
                       </td>
                       <td className="p-2 border-r border-neutral-300 font-sans font-bold text-black">
                         <div className="flex flex-col">
-                          <span>{s.name}</span>
+                          <div className="flex items-center gap-1">
+                            <span>{s.name}</span>
+                            {s.enrollmentStatus && s.enrollmentStatus !== "APPROVED" && (
+                              <span className="neo-box-sm bg-[#FFEB3B] text-black text-[9px] px-1 py-0.5 font-bold inline-flex items-center gap-0.5">
+                                <Lock className="w-2.5 h-2.5" />
+                                Menunggu ACC
+                              </span>
+                            )}
+                          </div>
                           {s.classGroup && (
                             <span className="text-[10px] text-neutral-500 font-normal">
                               {s.classGroup}
@@ -294,17 +306,28 @@ export function ModuleGradingWorkspace({
 
                       {/* Aksi Button */}
                       <td className="p-2 text-center">
-                        <button
-                          onClick={() => openGradeModal(s)}
-                          className={`neo-btn px-2.5 py-1 text-[11px] font-black cursor-pointer flex items-center justify-center gap-1 w-full ${
-                            isGraded
-                              ? "bg-white text-black hover:bg-neutral-100"
-                              : "bg-[#FFEB3B] text-black hover:bg-yellow-400"
-                          }`}
-                        >
-                          <Edit3 className="w-3 h-3" />
-                          {isGraded ? "Edit" : "Nilai"}
-                        </button>
+                        {s.enrollmentStatus && s.enrollmentStatus !== "APPROVED" ? (
+                          <button
+                            disabled
+                            className="neo-btn px-1.5 py-1 text-[10px] font-black bg-neutral-200 text-neutral-500 cursor-not-allowed flex items-center justify-center gap-1 w-full"
+                            title="Praktikan ini berstatus Menunggu ACC dari Koordinator Lab dan belum dapat dinilai."
+                          >
+                            <Lock className="w-3 h-3" />
+                            Menunggu ACC
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => openGradeModal(s)}
+                            className={`neo-btn px-2.5 py-1 text-[11px] font-black cursor-pointer flex items-center justify-center gap-1 w-full ${
+                              isGraded
+                                ? "bg-white text-black hover:bg-neutral-100"
+                                : "bg-[#FFEB3B] text-black hover:bg-yellow-400"
+                            }`}
+                          >
+                            <Edit3 className="w-3 h-3" />
+                            {isGraded ? "Edit" : "Nilai"}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -317,6 +340,7 @@ export function ModuleGradingWorkspace({
 
       {/* Modal Penilaian Combo */}
       <ComboGradingModal
+        key={selectedStudent?.nim}
         isOpen={selectedStudent !== null}
         onClose={() => setSelectedStudent(null)}
         moduleId={module.id}

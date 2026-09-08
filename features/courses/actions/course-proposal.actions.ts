@@ -230,22 +230,38 @@ export async function approveCourseProposalAction(courseId: string, assistantId:
   }
 
   try {
-    await (prisma.courseAssistant.update as any)({
-      where: {
-        courseId_assistantId: {
+    await prisma.$transaction(async (tx) => {
+      await (tx.courseAssistant.update as any)({
+        where: {
+          courseId_assistantId: {
+            courseId,
+            assistantId,
+          },
+        },
+        data: {
+          status: "APPROVED",
+          approvedAt: new Date(),
+        },
+      });
+
+      // Otomatis setujui seluruh mahasiswa binaan asprak ini yang berstatus PENDING_APPROVAL
+      await (tx.courseEnrollment.updateMany as any)({
+        where: {
           courseId,
           assistantId,
+          status: "PENDING_APPROVAL",
         },
-      },
-      data: {
-        status: "APPROVED",
-        approvedAt: new Date(),
-      },
+        data: {
+          status: "APPROVED",
+        },
+      });
     });
 
     revalidatePath("/admin/pengajuan-matakuliah");
     revalidatePath("/admin/matakuliah");
     revalidatePath("/praktikum");
+    revalidatePath(`/${courseId}/praktikan`);
+    revalidatePath(`/${courseId}/modul`);
     return { success: true, message: "Pengajuan mata kuliah dan praktikan berhasil di-ACC (Disetujui)." };
   } catch (error) {
     console.error("approveCourseProposalAction failed", error);
@@ -307,16 +323,26 @@ export async function getAllCourseProposalsAction() {
   // Hitung jumlah praktikan yang dibina oleh asprak ini di course terkait
   const enriched = await Promise.all(
     proposals.map(async (p) => {
-      const studentCount = await prisma.courseEnrollment.count({
-        where: {
-          courseId: p.courseId,
-          assistantId: p.assistantId,
-        },
-      });
+      const [studentCount, pendingStudentCount] = await Promise.all([
+        prisma.courseEnrollment.count({
+          where: {
+            courseId: p.courseId,
+            assistantId: p.assistantId,
+          },
+        }),
+        prisma.courseEnrollment.count({
+          where: {
+            courseId: p.courseId,
+            assistantId: p.assistantId,
+            status: "PENDING_APPROVAL",
+          },
+        }),
+      ]);
 
       return {
         ...p,
         studentCount,
+        pendingStudentCount,
       };
     })
   );

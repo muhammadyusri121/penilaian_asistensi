@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import {
   RUBRIC_PRESETS,
   CRITERIA_MAX_SCORES,
 } from "../utils/calculate";
+import { isoToDmy, dmyToIso } from "../utils/date";
 import { saveGradeAction } from "../actions/grade.actions";
 import { CheckCircle2, AlertCircle, Sparkles, Calendar } from "lucide-react";
 
@@ -48,22 +49,23 @@ export function ComboGradingModal({
   student,
   onSuccess,
 }: ComboGradingModalProps) {
-  const [taskConformity, setTaskConformity] = useState<number>(student?.currentGrade?.taskConformity ?? 22);
-  const [programExplanation, setProgramExplanation] = useState<number>(student?.currentGrade?.programExplanation ?? 19);
-  const [attendance, setAttendance] = useState<number>(student?.currentGrade?.attendance ?? 8);
-  const [attitude, setAttitude] = useState<number>(student?.currentGrade?.attitude ?? 6);
+  const [taskConformity, setTaskConformity] = useState<number>(student?.currentGrade?.taskConformity ?? 0);
+  const [programExplanation, setProgramExplanation] = useState<number>(student?.currentGrade?.programExplanation ?? 0);
+  const [attendance, setAttendance] = useState<number>(student?.currentGrade?.attendance ?? 0);
+  const [attitude, setAttitude] = useState<number>(student?.currentGrade?.attitude ?? 0);
 
-  const [reportDiscussion, setReportDiscussion] = useState<number>(student?.currentGrade?.reportDiscussion ?? 12);
-  const [reportFormat, setReportFormat] = useState<number>(student?.currentGrade?.reportFormat ?? 10.5);
-  const [plagiarism, setPlagiarism] = useState<number>(student?.currentGrade?.plagiarism ?? 9);
-  const [neatness, setNeatness] = useState<number>(student?.currentGrade?.neatness ?? 3.5);
+  const [reportDiscussion, setReportDiscussion] = useState<number>(student?.currentGrade?.reportDiscussion ?? 0);
+  const [reportFormat, setReportFormat] = useState<number>(student?.currentGrade?.reportFormat ?? 0);
+  const [plagiarism, setPlagiarism] = useState<number>(student?.currentGrade?.plagiarism ?? 0);
+  const [neatness, setNeatness] = useState<number>(student?.currentGrade?.neatness ?? 0);
 
-  const [submissionPunctuality, setSubmissionPunctuality] = useState<number>(student?.currentGrade?.submissionPunctuality ?? 10);
-  const [asistensiDate, setAsistensiDate] = useState<string>(
-    student?.currentGrade?.asistensiDate
-      ? new Date(student.currentGrade.asistensiDate).toISOString().split("T")[0]
-      : new Date().toISOString().split("T")[0]
-  );
+  const [submissionPunctuality, setSubmissionPunctuality] = useState<number>(student?.currentGrade?.submissionPunctuality ?? 0);
+  const initialIsoDate = student?.currentGrade?.asistensiDate
+    ? new Date(student.currentGrade.asistensiDate).toISOString().split("T")[0]
+    : new Date().toISOString().split("T")[0];
+  const [asistensiDate, setAsistensiDate] = useState<string>(initialIsoDate);
+  const [dateDisplayValue, setDateDisplayValue] = useState<string>(isoToDmy(initialIsoDate));
+  const dateInputRef = React.useRef<HTMLInputElement>(null);
 
   const [notes, setNotes] = useState<string>(student?.currentGrade?.notes ?? "");
   const [githubUrl, setGithubUrl] = useState<string>(student?.githubUrl ?? "");
@@ -72,6 +74,30 @@ export function ComboGradingModal({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (student) {
+      setTaskConformity(student.currentGrade?.taskConformity ?? 0);
+      setProgramExplanation(student.currentGrade?.programExplanation ?? 0);
+      setAttendance(student.currentGrade?.attendance ?? 0);
+      setAttitude(student.currentGrade?.attitude ?? 0);
+      setReportDiscussion(student.currentGrade?.reportDiscussion ?? 0);
+      setReportFormat(student.currentGrade?.reportFormat ?? 0);
+      setPlagiarism(student.currentGrade?.plagiarism ?? 0);
+      setNeatness(student.currentGrade?.neatness ?? 0);
+      setSubmissionPunctuality(student.currentGrade?.submissionPunctuality ?? 0);
+      const iso = student.currentGrade?.asistensiDate
+        ? new Date(student.currentGrade.asistensiDate).toISOString().split("T")[0]
+        : new Date().toISOString().split("T")[0];
+      setAsistensiDate(iso);
+      setDateDisplayValue(isoToDmy(iso));
+      setNotes(student.currentGrade?.notes ?? "");
+      setGithubUrl(student.githubUrl ?? "");
+      setDemoUrl(student.demoUrl ?? "");
+      setErrorMsg(null);
+      setSuccessMsg(null);
+    }
+  }, [student]);
 
   // Live real-time subtotal & total calculation
   const calc = useMemo(() => {
@@ -208,14 +234,62 @@ export function ComboGradingModal({
               <span className="text-xs font-bold text-neutral-700">{student.classGroup}</span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-black" />
-            <input
-              type="date"
-              value={asistensiDate}
-              onChange={(e) => setAsistensiDate(e.target.value)}
-              className="neo-box-sm text-xs font-mono font-bold px-2 py-1 bg-white"
-            />
+          <div className="flex items-center gap-1.5 bg-white neo-box-sm px-2.5 py-1">
+            <Calendar className="w-4 h-4 text-black shrink-0" />
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  placeholder="DD/MM/YYYY"
+                  value={dateDisplayValue}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDateDisplayValue(val);
+                    const iso = dmyToIso(val);
+                    if (iso) {
+                      setAsistensiDate(iso);
+                    }
+                  }}
+                  onBlur={() => {
+                    const iso = dmyToIso(dateDisplayValue);
+                    if (iso) {
+                      setAsistensiDate(iso);
+                      setDateDisplayValue(isoToDmy(iso));
+                    } else {
+                      setDateDisplayValue(isoToDmy(asistensiDate));
+                    }
+                  }}
+                  className="w-24 text-xs font-mono font-black text-black bg-transparent outline-none border-b border-neutral-400 focus:border-black"
+                />
+                <button
+                  type="button"
+                  title="Buka Kalender"
+                  onClick={() => {
+                    try {
+                      dateInputRef.current?.showPicker();
+                    } catch {
+                      dateInputRef.current?.focus();
+                    }
+                  }}
+                  className="p-1 hover:bg-neutral-100 rounded text-neutral-700 hover:text-black cursor-pointer transition-colors"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                </button>
+                <input
+                  ref={dateInputRef}
+                  type="date"
+                  tabIndex={-1}
+                  value={asistensiDate}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setAsistensiDate(e.target.value);
+                      setDateDisplayValue(isoToDmy(e.target.value));
+                    }
+                  }}
+                  className="sr-only"
+                />
+              </div>
+            </div>
           </div>
         </div>
 

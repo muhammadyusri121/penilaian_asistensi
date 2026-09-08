@@ -34,7 +34,6 @@ export function StudentManager({ initialStudents, courseId }: StudentManagerProp
   // Single Add form
   const [nim, setNim] = useState("");
   const [name, setName] = useState("");
-  const [classGroup, setClassGroup] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -51,12 +50,11 @@ export function StudentManager({ initialStudents, courseId }: StudentManagerProp
     setSuccessMsg(null);
 
     try {
-      const res = await createStudentAction({ nim, name, classGroup: classGroup || undefined }, courseId);
+      const res = await createStudentAction({ nim, name }, courseId);
       if (res.success) {
         setSuccessMsg(res.message);
         setNim("");
         setName("");
-        setClassGroup("");
         setTimeout(() => {
           setIsAddOpen(false);
           router.refresh();
@@ -237,12 +235,6 @@ export function StudentManager({ initialStudents, courseId }: StudentManagerProp
             onChange={(e) => setName(e.target.value)}
           />
 
-          <Input
-            label="Kelas / Shift / Kelompok"
-            placeholder="Contoh: Kelas B / Shift 1"
-            value={classGroup}
-            onChange={(e) => setClassGroup(e.target.value)}
-          />
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={() => setIsAddOpen(false)}>

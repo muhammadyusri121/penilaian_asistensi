@@ -83,6 +83,7 @@ export async function importStudentsToCourseAction(
       studentNim: string;
       assistantId: string;
       classGroup: string | null;
+      status: "APPROVED" | "PENDING_APPROVAL";
     }> = [];
     const enrollmentsToUpdate: Array<{
       id: string;
@@ -110,6 +111,7 @@ export async function importStudentsToCourseAction(
           studentNim: item.nim,
           assistantId: session.userId,
           classGroup: item.classGroup,
+          status: session.role === "ADMIN" ? "APPROVED" : "PENDING_APPROVAL",
         });
       }
     }
@@ -243,13 +245,28 @@ export async function createStudentInCourseAction(
             studentNim: cleanNim,
             assistantId: targetAssistantId,
             classGroup: cleanClass,
+            status: session.role === "ADMIN" ? "APPROVED" : "PENDING_APPROVAL",
           },
         });
       });
     }
 
     revalidatePath(`/${courseId}/praktikan`);
-    return { success: true, message: "Praktikan berhasil didaftarkan ke mata kuliah ini." };
+    revalidatePath(`/${courseId}/modul`);
+    revalidatePath("/admin/pengajuan-matakuliah");
+
+    const ca = await prisma.courseAssistant.findUnique({
+      where: {
+        courseId_assistantId: { courseId, assistantId: session.userId },
+      },
+    });
+    const isApprovedCourse = ca?.status === "APPROVED";
+    const msg =
+      session.role !== "ADMIN" && isApprovedCourse
+        ? "Praktikan berhasil didaftarkan. Karena mata kuliah sudah disetujui sebelumnya, mahasiswa baru ini berstatus Menunggu ACC dari Koordinator Lab."
+        : "Praktikan berhasil didaftarkan ke mata kuliah ini.";
+
+    return { success: true, message: msg };
   } catch (error) {
     console.error("createStudentInCourseAction failed", error);
     return { success: false, message: "Gagal menyimpan data praktikan." };
@@ -300,6 +317,7 @@ export async function getCourseStudentsAction(courseId: string) {
     nim: en.studentNim,
     name: en.student.name,
     classGroup: en.classGroup,
+    status: (en as any).status || "APPROVED",
     assistantName: en.assistant.name,
     assistantId: en.assistantId,
     submissions: en.student.submissions,
@@ -337,10 +355,357 @@ export async function removeStudentFromCourseAction(
     });
 
     revalidatePath(`/${courseId}/praktikan`);
+    revalidatePath(`/${courseId}/modul`);
+    revalidatePath(`/${courseId}/rekap-nilai`);
+    revalidatePath("/admin/pengajuan-matakuliah");
     return { success: true, message: "Praktikan berhasil dikeluarkan dari mata kuliah ini." };
   } catch (error) {
     console.error("removeStudentFromCourseAction failed", error);
     return { success: false, message: "Gagal memproses penghapusan praktikan." };
+  }
+}
+
+export interface UpdateStudentInput {
+  oldNim: string;
+  newNim: string;
+  name: string;
+}
+
+/**
+ * Update Data Praktikan (NIM & Nama)
+ * Jika NIM diubah oleh asprak: status kembali menjadi PENDING_APPROVAL (butuh ACC)
+ * Jika hanya nama diubah: status tetap
+ */
+export async function updateStudentInCourseAction(
+  courseId: string,
+  input: UpdateStudentInput
+): Promise<StudentActionResult> {
+  const session = await getSession();
+  if (!session) {
+    return { success: false, message: "Akses ditolak. Silakan login terlebih dahulu." };
+  }
+
+  if (session.role !== "ADMIN") {
+    const windowCheck = await checkWindowAccessAction("student");
+    if (!windowCheck.allowed) {
+      return {
+        success: false,
+        message: windowCheck.reason || "Periode input/edit praktikan telah ditutup.",
+      };
+    }
+  }
+
+  const oldNim = input.oldNim?.trim();
+  const newNim = input.newNim?.trim();
+  const name = input.name?.trim();
+
+  if (!oldNim || !newNim || !name) {
+    return { success: false, message: "NIM dan Nama Lengkap wajib diisi." };
+  }
+
+  if (!/^\d+$/.test(newNim)) {
+    return { success: false, message: "NIM baru hanya boleh berisi angka." };
+  }
+
+  if (name.length < 2) {
+    return { success: false, message: "Nama lengkap minimal 2 karakter." };
+  }
+
+  try {
+    const enrollment = await prisma.courseEnrollment.findUnique({
+      where: {
+        courseId_studentNim: { courseId, studentNim: oldNim },
+      },
+      include: {
+        assistant: { select: { id: true, name: true } },
+      },
+    });
+
+    if (!enrollment) {
+      return { success: false, message: "Data praktikan di mata kuliah ini tidak ditemukan." };
+    }
+
+    if (session.role !== "ADMIN" && enrollment.assistantId !== session.userId) {
+      return { success: false, message: "Anda tidak memiliki izin untuk mengedit praktikan ini." };
+    }
+
+    const isNimChanged = oldNim !== newNim;
+
+    if (isNimChanged) {
+      // 1. Cek apakah newNim sudah terdaftar di mata kuliah ini
+      const conflict = await prisma.courseEnrollment.findUnique({
+        where: {
+          courseId_studentNim: { courseId, studentNim: newNim },
+        },
+      });
+
+      if (conflict) {
+        return {
+          success: false,
+          message: `Praktikan dengan NIM ${newNim} sudah terdaftar di mata kuliah ini.`,
+        };
+      }
+
+      // 2. Cek apakah newNim sudah ada di master Student global
+      const existingGlobalStudent = await prisma.student.findUnique({
+        where: { nim: newNim },
+      });
+
+      await prisma.$transaction(async (tx) => {
+        if (existingGlobalStudent) {
+          // Update nama mahasiswa target global
+          await tx.student.update({
+            where: { nim: newNim },
+            data: { name },
+          });
+
+          // Pindahkan enrollment ke newNim
+          await tx.courseEnrollment.update({
+            where: { id: enrollment.id },
+            data: {
+              studentNim: newNim,
+              status: session.role === "ADMIN" ? "APPROVED" : "PENDING_APPROVAL",
+            },
+          });
+
+          // Pindahkan submissions jika ada (tangani kolisi unique studentNim_moduleId)
+          const oldSubmissions = await tx.submission.findMany({
+            where: { studentNim: oldNim, module: { courseId } },
+          });
+          for (const sub of oldSubmissions) {
+            const targetSub = await tx.submission.findUnique({
+              where: {
+                studentNim_moduleId: {
+                  studentNim: newNim,
+                  moduleId: sub.moduleId,
+                },
+              },
+            });
+            if (targetSub) {
+              await tx.submission.delete({ where: { id: sub.id } });
+            } else {
+              await tx.submission.update({
+                where: { id: sub.id },
+                data: { studentNim: newNim },
+              });
+            }
+          }
+
+          // Pindahkan attendances jika ada (tangani kolisi unique courseId_studentNim_meetingNo)
+          const oldAttendances = await tx.attendance.findMany({
+            where: { courseId, studentNim: oldNim },
+          });
+          for (const att of oldAttendances) {
+            const targetAtt = await tx.attendance.findUnique({
+              where: {
+                courseId_studentNim_meetingNo: {
+                  courseId,
+                  studentNim: newNim,
+                  meetingNo: att.meetingNo,
+                },
+              },
+            });
+            if (targetAtt) {
+              await tx.attendance.delete({ where: { id: att.id } });
+            } else {
+              await tx.attendance.update({
+                where: { id: att.id },
+                data: { studentNim: newNim },
+              });
+            }
+          }
+
+          // Pindahkan pretestScores jika ada (tangani kolisi unique pretestId_studentNim)
+          const oldPretestScores = await tx.pretestScore.findMany({
+            where: { studentNim: oldNim, pretest: { courseId } },
+          });
+          for (const ps of oldPretestScores) {
+            const targetPs = await tx.pretestScore.findUnique({
+              where: {
+                pretestId_studentNim: {
+                  pretestId: ps.pretestId,
+                  studentNim: newNim,
+                },
+              },
+            });
+            if (targetPs) {
+              await tx.pretestScore.delete({ where: { id: ps.id } });
+            } else {
+              await tx.pretestScore.update({
+                where: { id: ps.id },
+                data: { studentNim: newNim },
+              });
+            }
+          }
+
+          // Pindahkan finalGrade jika ada (tangani kolisi unique courseId_studentNim)
+          const oldFinalGrade = await tx.finalGrade.findUnique({
+            where: {
+              courseId_studentNim: {
+                courseId,
+                studentNim: oldNim,
+              },
+            },
+          });
+          if (oldFinalGrade) {
+            const targetFg = await tx.finalGrade.findUnique({
+              where: {
+                courseId_studentNim: {
+                  courseId,
+                  studentNim: newNim,
+                },
+              },
+            });
+            if (targetFg) {
+              await tx.finalGrade.delete({ where: { id: oldFinalGrade.id } });
+            } else {
+              await tx.finalGrade.update({
+                where: { id: oldFinalGrade.id },
+                data: { studentNim: newNim },
+              });
+            }
+          }
+
+          // Hapus old student jika tidak memiliki enrollment lain
+          const otherCount = await tx.courseEnrollment.count({
+            where: { studentNim: oldNim },
+          });
+          if (otherCount === 0) {
+            await tx.student.delete({ where: { nim: oldNim } }).catch(() => {});
+          }
+        } else {
+          // Update NIM di student (otomatis mengalir ke semua FK karena onUpdate: Cascade)
+          await tx.student.update({
+            where: { nim: oldNim },
+            data: { nim: newNim, name },
+          });
+
+          // Jika dilakukan oleh Asprak, ubah status enrollment menjadi PENDING_APPROVAL
+          if (session.role !== "ADMIN") {
+            await tx.courseEnrollment.update({
+              where: { id: enrollment.id },
+              data: { status: "PENDING_APPROVAL" },
+            });
+          }
+        }
+      });
+    } else {
+      // Hanya ganti nama -> status enrollment TIDAK berubah
+      await prisma.student.update({
+        where: { nim: oldNim },
+        data: { name },
+      });
+    }
+
+    revalidatePath(`/${courseId}/praktikan`);
+    revalidatePath(`/${courseId}/modul`);
+    revalidatePath(`/${courseId}/rekap-nilai`);
+    revalidatePath("/admin/pengajuan-matakuliah");
+
+    if (isNimChanged && session.role !== "ADMIN") {
+      return {
+        success: true,
+        message: "NIM dan nama praktikan berhasil diperbarui. Karena NIM diubah, status praktikan kini Menunggu ACC dari Koordinator Lab.",
+      };
+    }
+
+    return {
+      success: true,
+      message: "Data praktikan berhasil diperbarui.",
+    };
+  } catch (error) {
+    console.error("updateStudentInCourseAction failed", error);
+    return { success: false, message: "Gagal memperbarui data praktikan." };
+  }
+}
+
+/**
+ * Admin Meng-ACC praktikan individu di mata kuliah
+ */
+export async function approveStudentEnrollmentAction(
+  courseId: string,
+  studentNim: string
+): Promise<StudentActionResult> {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { success: false, message: "Hanya Koordinator Lab (Admin) yang dapat menyetujui praktikan." };
+  }
+
+  try {
+    await prisma.courseEnrollment.update({
+      where: { courseId_studentNim: { courseId, studentNim } },
+      data: { status: "APPROVED" },
+    });
+
+    revalidatePath(`/${courseId}/praktikan`);
+    revalidatePath(`/${courseId}/modul`);
+    revalidatePath(`/${courseId}/rekap-nilai`);
+    revalidatePath("/admin/pengajuan-matakuliah");
+    return { success: true, message: `Praktikan dengan NIM ${studentNim} berhasil disetujui (di-ACC).` };
+  } catch (error) {
+    console.error("approveStudentEnrollmentAction failed", error);
+    return { success: false, message: "Gagal menyetujui praktikan." };
+  }
+}
+
+/**
+ * Admin Menolak praktikan individu di mata kuliah
+ */
+export async function rejectStudentEnrollmentAction(
+  courseId: string,
+  studentNim: string
+): Promise<StudentActionResult> {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { success: false, message: "Hanya Koordinator Lab (Admin) yang dapat menolak praktikan." };
+  }
+
+  try {
+    await prisma.courseEnrollment.update({
+      where: { courseId_studentNim: { courseId, studentNim } },
+      data: { status: "REJECTED" },
+    });
+
+    revalidatePath(`/${courseId}/praktikan`);
+    revalidatePath(`/${courseId}/modul`);
+    revalidatePath(`/${courseId}/rekap-nilai`);
+    revalidatePath("/admin/pengajuan-matakuliah");
+    return { success: true, message: `Praktikan dengan NIM ${studentNim} ditolak.` };
+  } catch (error) {
+    console.error("rejectStudentEnrollmentAction failed", error);
+    return { success: false, message: "Gagal menolak praktikan." };
+  }
+}
+
+/**
+ * Admin Meng-ACC SEMUA praktikan pending di mata kuliah sekaligus
+ */
+export async function approveAllStudentsInCourseAction(
+  courseId: string
+): Promise<StudentActionResult> {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { success: false, message: "Hanya Koordinator Lab (Admin) yang dapat menyetujui praktikan." };
+  }
+
+  try {
+    const updated = await prisma.courseEnrollment.updateMany({
+      where: { courseId, status: "PENDING_APPROVAL" },
+      data: { status: "APPROVED" },
+    });
+
+    revalidatePath(`/${courseId}/praktikan`);
+    revalidatePath(`/${courseId}/modul`);
+    revalidatePath(`/${courseId}/rekap-nilai`);
+    revalidatePath("/admin/pengajuan-matakuliah");
+    return {
+      success: true,
+      message: `Berhasil menyetujui (ACC) ${updated.count} praktikan di mata kuliah ini.`,
+      count: updated.count,
+    };
+  } catch (error) {
+    console.error("approveAllStudentsInCourseAction failed", error);
+    return { success: false, message: "Gagal menyetujui seluruh praktikan." };
   }
 }
 

@@ -32,12 +32,12 @@ export async function saveGradeAction(input: GradeInput): Promise<GradeActionRes
   const data = parsed.data;
 
   // Verifikasi hak akses: asisten hanya boleh menilai praktikan binaannya di course ini (ADMIN memiliki akses penuh)
-  const enrollment = await prisma.courseEnrollment.findFirst({
+  const enrollment = await (prisma.courseEnrollment.findFirst as any)({
     where: {
       studentNim: data.studentNim,
       course: { modules: { some: { id: data.moduleId } } },
     },
-    select: { assistantId: true, courseId: true },
+    select: { assistantId: true, courseId: true, status: true },
   });
 
   if (!enrollment) {
@@ -67,6 +67,14 @@ export async function saveGradeAction(input: GradeInput): Promise<GradeActionRes
       return {
         success: false,
         message: "Akses ditolak. Pengajuan mata kuliah ini belum disetujui (di-ACC) oleh Koordinator Lab. Anda baru dapat menilai setelah pengajuan disetujui.",
+      };
+    }
+
+    const enrollmentStatus = (enrollment as any)?.status;
+    if (enrollmentStatus && enrollmentStatus !== "APPROVED") {
+      return {
+        success: false,
+        message: "Akses ditolak. Praktikan ini berstatus Menunggu ACC / belum disetujui oleh Koordinator Lab.",
       };
     }
   }
@@ -196,13 +204,13 @@ export async function getModuleGradingDataAction(moduleId: string) {
       ? { enrollments: { some: { courseId: moduleInfo.courseId } } }
       : { enrollments: { some: { courseId: moduleInfo.courseId, assistantId: session.userId } } };
 
-  const students = await prisma.student.findMany({
+  const students = await (prisma.student.findMany as any)({
     where: studentWhere,
     orderBy: { nim: "asc" },
     include: {
       enrollments: {
         where: { courseId: moduleInfo.courseId },
-        select: { classGroup: true },
+        select: { classGroup: true, status: true },
       },
       submissions: {
         where: { moduleId },
@@ -222,10 +230,11 @@ export async function getModuleGradingDataAction(moduleId: string) {
 
   return {
     module: moduleInfo,
-    students: students.map((s) => ({
+    students: (students as any[]).map((s) => ({
       nim: s.nim,
       name: s.name,
       classGroup: s.enrollments[0]?.classGroup || null,
+      enrollmentStatus: s.enrollments[0]?.status || "APPROVED",
       submissions: s.submissions,
     })),
   };

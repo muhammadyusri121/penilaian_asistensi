@@ -33,7 +33,6 @@ export function CourseStudentCreateModal({
 }: CourseStudentCreateModalProps) {
   const [nim, setNim] = useState("");
   const [name, setName] = useState("");
-  const [classGroup, setClassGroup] = useState("");
   const [selectedAssistantId, setSelectedAssistantId] = useState<string>(
     assistantsList[0]?.id || currentUserId
   );
@@ -51,14 +50,12 @@ export function CourseStudentCreateModal({
       const res = await createStudentInCourseAction(courseId, {
         nim,
         name,
-        classGroup: classGroup || undefined,
         assistantId: isAdmin ? selectedAssistantId : undefined,
       });
 
       if (res.success) {
         setNim("");
         setName("");
-        setClassGroup("");
         onSuccess();
         onClose();
       } else {
@@ -106,14 +103,6 @@ export function CourseStudentCreateModal({
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
-        />
-
-        <Input
-          id="manual-class"
-          label="Kelas / Shift (Opsional)"
-          placeholder="cth: Kelas A / Shift Senin 08:00"
-          value={classGroup}
-          onChange={(e) => setClassGroup(e.target.value)}
         />
 
         {isAdmin && assistantsList.length > 0 && (

@@ -3,10 +3,16 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CourseImportModal } from "./course-import-modal";
-import { removeStudentFromCourseAction } from "../actions/student.actions";
+import {
+  removeStudentFromCourseAction,
+  approveStudentEnrollmentAction,
+  rejectStudentEnrollmentAction,
+  approveAllStudentsInCourseAction,
+} from "../actions/student.actions";
 import { submitCourseProposalAction } from "@/features/courses/actions/course-proposal.actions";
 import { formatIndoDateTime, getRemainingDaysText } from "@/features/periods/lib/period-date.utils";
 import { CourseStudentCreateModal } from "./course-student-create-modal";
+import { CourseStudentEditModal } from "./course-student-edit-modal";
 import { Button } from "@/components/ui/button";
 import {
   Search,
@@ -20,6 +26,9 @@ import {
   Clock,
   AlertCircle,
   Award,
+  Edit3,
+  Check,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -27,6 +36,7 @@ interface CourseStudentItem {
   nim: string;
   name: string;
   classGroup: string | null;
+  status: string;
   assistantName: string;
   assistantId: string;
 }
@@ -64,6 +74,9 @@ export function CourseStudentManager({
   const [search, setSearch] = useState("");
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<{ nim: string; name: string } | null>(null);
+  const [approvingNim, setApprovingNim] = useState<string | null>(null);
+  const [batchApproving, setBatchApproving] = useState(false);
 
   // Proposal Submission State
   const [submitLoading, setSubmitLoading] = useState(false);
@@ -128,6 +141,61 @@ export function CourseStudentManager({
       alert("Terjadi kendala jaringan.");
     }
   }
+
+  async function handleApproveStudent(studentNim: string) {
+    setApprovingNim(studentNim);
+    try {
+      const res = await approveStudentEnrollmentAction(courseId, studentNim);
+      if (res.success) {
+        setProposalMsg({ text: res.message });
+        router.refresh();
+      } else {
+        setProposalMsg({ text: res.message, error: true });
+      }
+    } catch {
+      setProposalMsg({ text: "Terjadi kesalahan jaringan saat meng-ACC.", error: true });
+    } finally {
+      setApprovingNim(null);
+    }
+  }
+
+  async function handleRejectStudent(studentNim: string) {
+    if (!confirm(`Tolak praktikan dengan NIM ${studentNim}?`)) return;
+    setApprovingNim(studentNim);
+    try {
+      const res = await rejectStudentEnrollmentAction(courseId, studentNim);
+      if (res.success) {
+        setProposalMsg({ text: res.message });
+        router.refresh();
+      } else {
+        setProposalMsg({ text: res.message, error: true });
+      }
+    } catch {
+      setProposalMsg({ text: "Terjadi kesalahan jaringan saat menolak praktikan.", error: true });
+    } finally {
+      setApprovingNim(null);
+    }
+  }
+
+  async function handleBatchApprove() {
+    if (!confirm("Setujui (ACC) seluruh praktikan yang berstatus Menunggu ACC di mata kuliah ini?")) return;
+    setBatchApproving(true);
+    try {
+      const res = await approveAllStudentsInCourseAction(courseId);
+      if (res.success) {
+        setProposalMsg({ text: res.message });
+        router.refresh();
+      } else {
+        setProposalMsg({ text: res.message, error: true });
+      }
+    } catch {
+      setProposalMsg({ text: "Terjadi kendala jaringan.", error: true });
+    } finally {
+      setBatchApproving(false);
+    }
+  }
+
+  const pendingCount = students.filter((s) => s.status === "PENDING_APPROVAL").length;
 
   return (
     <div className="space-y-4">
@@ -267,7 +335,20 @@ export function CourseStudentManager({
           />
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {isAdmin && pendingCount > 0 && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleBatchApprove}
+              disabled={batchApproving}
+              className="bg-[#4CAF50] hover:bg-green-600 text-white font-black text-xs"
+              title="ACC seluruh praktikan pending sekaligus"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+              {batchApproving ? "Memproses..." : `ACC Semua (${pendingCount})`}
+            </Button>
+          )}
           <Button variant="secondary" size="sm" onClick={() => setIsImportOpen(true)}>
             <Upload className="w-3.5 h-3.5 mr-1" />
             Import Excel
@@ -286,11 +367,11 @@ export function CourseStudentManager({
             <thead>
               <tr className="border-b-3 border-black bg-[#FFF9F0] text-xs font-black uppercase">
                 <th className="p-3 border-r-3 border-black w-12 text-center">No</th>
-                <th className="p-3 border-r-3 border-black w-36">NIM</th>
+                <th className="p-3 border-r-3 border-black w-32">NIM</th>
                 <th className="p-3 border-r-3 border-black">Nama Praktikan</th>
-                <th className="p-3 border-r-3 border-black w-36">Kelas / Shift</th>
-                {isAdmin && <th className="p-3 border-r-3 border-black w-44">Asisten Bimbingan</th>}
-                <th className="p-3 text-center w-24">Aksi</th>
+                <th className="p-3 border-r-3 border-black w-36 text-center">Status ACC</th>
+                {isAdmin && <th className="p-3 border-r-3 border-black w-40">Asisten Bimbingan</th>}
+                <th className="p-3 text-center w-36">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y-2 divide-neutral-200 text-xs font-medium">
@@ -304,7 +385,9 @@ export function CourseStudentManager({
                 </tr>
               ) : (
                 filtered.map((s, idx) => {
+                  const canEdit = isAdmin || s.assistantId === currentUserId;
                   const canDelete = isAdmin || s.assistantId === currentUserId;
+                  const isProcessing = approvingNim === s.nim;
 
                   return (
                     <tr key={s.nim} className="hover:bg-neutral-50 transition-colors">
@@ -317,8 +400,30 @@ export function CourseStudentManager({
                       <td className="p-3 border-r-3 border-black font-bold text-black">
                         {s.name}
                       </td>
-                      <td className="p-3 border-r-3 border-black text-neutral-600 font-mono">
-                        {s.classGroup || "-"}
+                      <td className="p-3 border-r-3 border-black text-center">
+                        {s.status === "APPROVED" && (
+                          <span className="neo-box-sm bg-[#4CAF50] text-white px-2 py-0.5 text-[10px] font-black uppercase inline-flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" />
+                            DISETUJUI (ACC)
+                          </span>
+                        )}
+                        {s.status === "PENDING_APPROVAL" && (
+                          <span className="neo-box-sm bg-[#FFEB3B] text-black px-2 py-0.5 text-[10px] font-black uppercase inline-flex items-center gap-1 animate-pulse">
+                            <Clock className="w-3 h-3" />
+                            MENUNGGU ACC
+                          </span>
+                        )}
+                        {s.status === "REJECTED" && (
+                          <span className="neo-box-sm bg-[#FF5252] text-white px-2 py-0.5 text-[10px] font-black uppercase inline-flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            DITOLAK
+                          </span>
+                        )}
+                        {s.status === "DRAFT" && (
+                          <span className="neo-box-sm bg-neutral-200 text-neutral-800 px-2 py-0.5 text-[10px] font-bold uppercase">
+                            DRAFT
+                          </span>
+                        )}
                       </td>
                       {isAdmin && (
                         <td className="p-3 border-r-3 border-black font-bold text-neutral-800">
@@ -328,16 +433,55 @@ export function CourseStudentManager({
                         </td>
                       )}
                       <td className="p-3 text-center">
-                        {canDelete && (
-                          <button
-                            type="button"
-                            className="neo-btn p-1.5 bg-[#FF5252] text-white hover:bg-red-600 cursor-pointer"
-                            onClick={() => handleRemove(s.nim, s.name)}
-                            title="Keluarkan praktikan dari mata kuliah ini"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        <div className="flex items-center justify-center gap-1">
+                          {isAdmin && s.status !== "APPROVED" && (
+                            <button
+                              type="button"
+                              disabled={isProcessing}
+                              onClick={() => handleApproveStudent(s.nim)}
+                              className="neo-btn px-1.5 py-1 bg-[#4CAF50] text-white hover:bg-green-600 cursor-pointer text-[10px] font-black flex items-center gap-0.5"
+                              title="Setujui (ACC) Praktikan Ini"
+                            >
+                              <Check className="w-3 h-3" />
+                              ACC
+                            </button>
+                          )}
+
+                          {isAdmin && s.status === "PENDING_APPROVAL" && (
+                            <button
+                              type="button"
+                              disabled={isProcessing}
+                              onClick={() => handleRejectStudent(s.nim)}
+                              className="neo-btn px-1.5 py-1 bg-red-100 hover:bg-red-200 text-red-700 border-red-300 cursor-pointer text-[10px] font-black flex items-center gap-0.5"
+                              title="Tolak Praktikan Ini"
+                            >
+                              <X className="w-3 h-3" />
+                              Tolak
+                            </button>
+                          )}
+
+                          {canEdit && (
+                            <button
+                              type="button"
+                              className="neo-btn p-1.5 bg-yellow-300 text-black hover:bg-yellow-400 cursor-pointer"
+                              onClick={() => setEditingStudent({ nim: s.nim, name: s.name })}
+                              title="Edit NIM / Nama Praktikan"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {canDelete && (
+                            <button
+                              type="button"
+                              className="neo-btn p-1.5 bg-[#FF5252] text-white hover:bg-red-600 cursor-pointer"
+                              onClick={() => handleRemove(s.nim, s.name)}
+                              title="Keluarkan praktikan dari mata kuliah ini"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -365,6 +509,15 @@ export function CourseStudentManager({
         isAdmin={isAdmin}
         currentUserId={currentUserId}
         assistantsList={assistantsList}
+      />
+      {/* Modal Edit Praktikan */}
+      <CourseStudentEditModal
+        courseId={courseId}
+        isOpen={editingStudent !== null}
+        onClose={() => setEditingStudent(null)}
+        onSuccess={() => router.refresh()}
+        isAdmin={isAdmin}
+        student={editingStudent}
       />
     </div>
   );

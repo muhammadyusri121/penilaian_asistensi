@@ -21,6 +21,7 @@ interface CourseProposalItem {
   notes: string | null;
   assignedAt: Date;
   studentCount: number;
+  pendingStudentCount?: number;
   course: {
     id: string;
     code: string;
@@ -166,13 +167,26 @@ export function CourseProposalManager({ proposals }: CourseProposalManagerProps)
                         <span className="neo-box-sm bg-blue-100 text-blue-900 px-2 py-0.5 font-mono font-bold text-xs">
                           {item.studentCount} Mahasiswa
                         </span>
+                        {item.pendingStudentCount && item.pendingStudentCount > 0 ? (
+                          <div className="mt-1">
+                            <span className="neo-box-sm bg-yellow-300 text-black px-1.5 py-0.5 font-mono font-black text-[10px] animate-pulse inline-block">
+                              {item.pendingStudentCount} Perlu ACC
+                            </span>
+                          </div>
+                        ) : null}
                       </td>
                       <td className="p-3 border-r border-neutral-200 text-center">
-                        {item.status === "APPROVED" && (
+                        {item.status === "APPROVED" && (!item.pendingStudentCount || item.pendingStudentCount === 0) && (
                           <span className="neo-box-sm bg-[#4CAF50] text-white px-2 py-1 font-black text-[10px] uppercase">
                             DISETUJUI (ACC)
                           </span>
                         )}
+                        {item.status === "APPROVED" && item.pendingStudentCount && item.pendingStudentCount > 0 ? (
+                          <span className="neo-box-sm bg-[#FFEB3B] text-black px-2 py-1 font-black text-[10px] uppercase animate-pulse flex items-center justify-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            PRAKTIKAN BARU ({item.pendingStudentCount})
+                          </span>
+                        ) : null}
                         {item.status === "PENDING_APPROVAL" && (
                           <span className="neo-box-sm bg-[#FFEB3B] text-black px-2 py-1 font-black text-[10px] uppercase animate-pulse">
                             MENUNGGU ACC
@@ -194,7 +208,7 @@ export function CourseProposalManager({ proposals }: CourseProposalManagerProps)
                       </td>
                       <td className="p-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          {item.status !== "APPROVED" && (
+                          {(item.status !== "APPROVED" || (item.pendingStudentCount && item.pendingStudentCount > 0)) && (
                             <Button
                               type="button"
                               variant="primary"
@@ -202,6 +216,7 @@ export function CourseProposalManager({ proposals }: CourseProposalManagerProps)
                               disabled={isProcessing}
                               onClick={() => handleApprove(item.courseId, item.assistantId)}
                               className="text-xs bg-[#4CAF50] hover:bg-green-600 text-white"
+                              title={item.pendingStudentCount && item.pendingStudentCount > 0 ? "ACC Seluruh Praktikan Baru" : "ACC Pengajuan"}
                             >
                               <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
                               ACC
