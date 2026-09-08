@@ -10,11 +10,16 @@ const globalForPrisma = globalThis as unknown as {
 
 function getPrismaClient(): PrismaClient {
   if (!globalForPrisma.prisma) {
+    const isProduction = process.env.NODE_ENV === "production";
+
     const pool =
       globalForPrisma.pool ??
       new Pool({
         connectionString: process.env.DATABASE_URL,
-        max: 10,
+        // Di Vercel / Serverless production, batasi 2 koneksi per instance
+        // agar instance-instance lambda tidak membanjiri connection slot PostgreSQL
+        max: isProduction ? 2 : 10,
+        connectionTimeoutMillis: 10000,
         idleTimeoutMillis: 5000, // Cepat bersihkan koneksi idle agar router/firewall tidak memutusnya sepihak
         keepAlive: true,
         keepAliveInitialDelayMillis: 2000, // Kirim keepalive tiap 2 detik
